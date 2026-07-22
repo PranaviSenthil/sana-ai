@@ -12,6 +12,8 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useWebCallReminder } from "@/hooks/use-web-call-reminder";
+import { WebCallOverlay } from "@/components/voice/WebCallOverlay";
 
 function NotFoundComponent() {
   return (
@@ -80,6 +82,7 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
+  const { isOverlayOpen, activeCallConfig, closeWebCall } = useWebCallReminder();
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
@@ -94,6 +97,14 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <Outlet />
       <Toaster position="top-center" richColors />
+      <WebCallOverlay
+        isOpen={isOverlayOpen}
+        config={activeCallConfig}
+        onClose={closeWebCall}
+        onRescheduled={() => {
+          queryClient.invalidateQueries({ queryKey: ["reminders"] });
+        }}
+      />
     </QueryClientProvider>
   );
 }

@@ -25,11 +25,13 @@ import {
   Pencil,
   ChevronDown,
   Loader2,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import sanaAvatar from "@/assets/sana-avatar.png";
 import { PERSONALITIES, type AiPersonality } from "@/lib/sana";
 import { createReminder } from "@/lib/reminders.functions";
+import { triggerIncomingWebCall } from "@/hooks/use-web-call-reminder";
 
 export const Route = createFileRoute("/_authenticated/reminder")({
   ssr: false,
@@ -224,13 +226,27 @@ function AddReminderPage() {
 
       {/* AI Agent Call */}
       <div className="mx-4 mt-3 rounded-[22px] border border-border bg-card p-4 shadow-card">
-        <div className="text-[13px] font-extrabold">AI Agent Call</div>
+        <div className="flex items-center justify-between">
+          <div className="text-[13px] font-extrabold">AI Agent Call</div>
+          <button
+            onClick={() =>
+              triggerIncomingWebCall({
+                reminderTitle: title.trim() || "Study Session",
+                persona,
+                userName: "Sanjai",
+              })
+            }
+            className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-[11px] font-bold text-primary hover:bg-primary/20 transition"
+          >
+            <Sparkles className="h-3 w-3" /> Test Web Call Now
+          </button>
+        </div>
         <div className="mt-3 flex items-center gap-3 rounded-2xl bg-lavender p-3">
           <img src={sanaAvatar} alt="Sana" className="h-12 w-12 shrink-0 rounded-full object-cover" />
           <div className="min-w-0 flex-1">
             <div className="text-[13px] font-extrabold text-primary">You will receive a call from AI Agent "Sana"</div>
             <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-              Sana will call you at the reminder time to get you started and keep you accountable.
+              Sana will call you in your browser at the reminder time to get you started and keep you accountable.
             </p>
           </div>
           <div className="gradient-primary grid h-11 w-11 shrink-0 place-items-center rounded-full shadow-soft">
