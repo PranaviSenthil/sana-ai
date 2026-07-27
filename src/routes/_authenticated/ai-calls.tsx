@@ -3,9 +3,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { TopBar } from "@/components/app/TopBar";
 import { listReminders, deleteReminder, updateReminderStatus } from "@/lib/reminders.functions";
-import { ArrowLeft, Phone, Plus, Repeat, Trash2, CheckCheck, Clock } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Repeat, Trash2, CheckCheck, Clock, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { triggerIncomingWebCall } from "@/hooks/use-web-call-reminder";
 
 export const Route = createFileRoute("/_authenticated/ai-calls")({
   head: () => ({
@@ -53,6 +54,15 @@ function AICallsPage() {
 
   const groups = groupByDay(upcoming);
 
+  const handleTestWebCall = () => {
+    triggerIncomingWebCall({
+      reminderTitle: upcoming[0]?.title || "DBMS Functions & Modules Revision",
+      topic: "Python & DBMS Architecture",
+      userName: "",
+      persona: "friendly_coach",
+    });
+  };
+
   return (
     <div className="pb-6">
       <TopBar
@@ -67,7 +77,13 @@ function AICallsPage() {
 
 
       <section className="mx-5 mt-2 space-y-2">
-        <Link to="/voice-call/new" className="gradient-primary shadow-soft flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-sm font-semibold text-primary-foreground">
+        <button
+          onClick={handleTestWebCall}
+          className="gradient-primary shadow-soft flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-sm font-semibold text-primary-foreground animate-pulse"
+        >
+          <Sparkles className="h-4 w-4" /> Simulate Incoming Web Call (Test Now)
+        </button>
+        <Link to="/voice-call/new" className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-primary/30 bg-lavender text-xs font-semibold text-primary">
           <Phone className="h-4 w-4" /> Schedule AI Voice Call
         </Link>
         <Link to="/reminder" className="flex h-10 w-full items-center justify-center gap-2 rounded-2xl border border-border bg-card text-xs font-semibold text-foreground">

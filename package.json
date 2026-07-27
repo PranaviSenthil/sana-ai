@@ -57,6 +57,7 @@
     "@tanstack/react-start": "^1.168.26",
     "@tanstack/router-plugin": "^1.168.18",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "@vapi-ai/web": "^2.6.1",
     "ai": "^7.0.4",
     "canvas-confetti": "^1.9.4",
     "class-variance-authority": "^0.7.1",
