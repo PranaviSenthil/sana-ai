@@ -20,15 +20,15 @@ export function EmbeddedMeeting({ roomUrl, onLeave, onEnd, isCreator, participan
         <div className="flex items-center gap-3">
           <button 
             onClick={onLeave}
-            className="flex items-center gap-2 text-[14px] font-semibold text-gray-300 hover:text-white transition-colors bg-white/5 hover:bg-white/10 px-4 py-2 rounded-xl"
+            className="flex items-center gap-2 text-[14px] font-semibold text-gray-300 hover:text-white transition-colors bg-white/5 hover:bg-white/10 px-4 py-2 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Return to Chat
           </button>
           {isCreator && onEnd && (
             <button 
               onClick={onEnd}
-              className="flex items-center gap-2 text-[14px] font-bold text-red-500 hover:text-red-400 transition-colors bg-red-500/10 hover:bg-red-500/20 px-4 py-2 rounded-xl border border-red-500/20"
+              className="flex items-center gap-2 text-[14px] font-bold text-red-500 hover:text-red-400 transition-colors bg-red-500/10 hover:bg-red-500/20 px-4 py-2 rounded-xl border border-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
             >
               End Session for Everyone
             </button>
@@ -40,7 +40,7 @@ export function EmbeddedMeeting({ roomUrl, onLeave, onEnd, isCreator, participan
                 <span className="text-[12px] font-bold text-[#a5b4fc]">Live Session</span>
             </div>
             <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-full">
-                <Users className="h-4 w-4 text-gray-300" />
+                <Users className="h-4 w-4 text-gray-300" aria-hidden="true" />
                 <span className="text-[12px] font-semibold text-gray-200">{participantCount} Joined</span>
             </div>
         </div>

@@ -88,7 +88,7 @@ export function ClassroomConnectorSheet({
       {open && (
         <>
           <motion.div
-            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+            className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -99,7 +99,7 @@ export function ClassroomConnectorSheet({
             aria-modal="true"
             aria-labelledby="classroom-sheet-title"
             className={cn(
-              "fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+              "fixed z-[101] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
               "w-[min(440px,calc(100vw-24px))] max-h-[92vh] overflow-y-auto",
               "rounded-3xl bg-background shadow-2xl border border-border/50",
             )}
@@ -113,13 +113,13 @@ export function ClassroomConnectorSheet({
               <button
                 onClick={onClose}
                 aria-label="Close"
-                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-muted transition"
+                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary transition"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" aria-hidden="true" />
               </button>
               <div className="flex items-center gap-3">
                 <div className="h-12 w-12 rounded-2xl bg-warning/15 flex items-center justify-center">
-                  <GraduationCap className="h-6 w-6 text-warning" />
+                  <GraduationCap className="h-6 w-6 text-warning" aria-hidden="true" />
                 </div>
                 <div>
                   <h2 id="classroom-sheet-title" className="text-lg font-semibold leading-tight">
@@ -167,7 +167,7 @@ function DisconnectedView({ onConnect }: { onConnect: () => void }) {
     <>
       <div className="rounded-2xl border border-border/60 bg-muted/30 p-4">
         <div className="flex items-start gap-2">
-          <ShieldCheck className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+          <ShieldCheck className="h-4 w-4 text-primary mt-0.5 shrink-0" aria-hidden="true" />
           <div className="text-xs text-muted-foreground leading-relaxed">
             Sana will request the minimum read-only scopes. We never post, edit, or delete anything
             in your Classroom or Drive.
@@ -177,12 +177,12 @@ function DisconnectedView({ onConnect }: { onConnect: () => void }) {
 
       <div>
         <div className="text-xs font-medium mb-2 flex items-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5 text-primary" /> Permissions we'll request
+          <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" /> Permissions we'll request
         </div>
         <ul className="space-y-1.5">
           {PERMISSIONS.map((p) => (
             <li key={p} className="flex items-start gap-2 text-xs">
-              <CheckCircle2 className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+              <CheckCircle2 className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" aria-hidden="true" />
               <span>{p}</span>
             </li>
           ))}
@@ -196,6 +196,7 @@ function DisconnectedView({ onConnect }: { onConnect: () => void }) {
           "bg-foreground text-background font-medium text-sm",
           "hover:opacity-90 active:scale-[0.99] transition",
           "shadow-sm",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
         )}
       >
         <GoogleG className="h-4 w-4" />
@@ -219,6 +220,7 @@ function ConnectedView({
   onSync: () => void;
   getSummary: () => Promise<{ courses: number; coursework: number; announcements: number; materials: number }>;
 }) {
+  const [imgError, setImgError] = useState(false);
   const { data: summary } = useQuery({
     queryKey: ["classroom-sync-summary"],
     queryFn: () => getSummary(),
@@ -235,11 +237,16 @@ function ConnectedView({
   return (
     <>
       <div className="rounded-2xl border border-border/60 p-3 flex items-center gap-3">
-        {picture ? (
-          <img src={picture} alt="" className="h-10 w-10 rounded-full" />
+        {picture && !imgError ? (
+          <img
+            src={picture}
+            alt={name ? `${name}'s profile picture` : "User profile picture"}
+            className="h-10 w-10 rounded-full"
+            onError={() => setImgError(true)}
+          />
         ) : (
           <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center">
-            <GraduationCap className="h-5 w-5 text-primary" />
+            <GraduationCap className="h-5 w-5 text-primary" aria-hidden="true" />
           </div>
         )}
         <div className="min-w-0 flex-1">
@@ -247,7 +254,7 @@ function ConnectedView({
           <div className="text-xs text-muted-foreground truncate">{email ?? ""}</div>
         </div>
         <div className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
-          <CheckCircle2 className="h-4 w-4" />
+          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
           Live
         </div>
       </div>
@@ -261,7 +268,7 @@ function ConnectedView({
               className="rounded-2xl border border-border/60 p-3 flex items-center gap-2.5"
             >
               <div className="h-8 w-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <Icon className="h-4 w-4" />
+                <Icon className="h-4 w-4" aria-hidden="true" />
               </div>
               <div className="min-w-0">
                 <div className="text-lg font-semibold leading-none">{s.value}</div>
@@ -281,23 +288,23 @@ function ConnectedView({
       <div className="grid grid-cols-3 gap-2">
         <button
           onClick={onSync}
-          className="flex items-center justify-center gap-1.5 rounded-2xl py-2.5 px-3 text-xs font-medium bg-foreground text-background hover:opacity-90 active:scale-[0.99] transition"
+          className="flex items-center justify-center gap-1.5 rounded-2xl py-2.5 px-3 text-xs font-medium bg-foreground text-background hover:opacity-90 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 transition"
         >
-          <RefreshCw className="h-3.5 w-3.5" />
+          <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
           Sync
         </button>
         <a
           href="/classroom"
-          className="flex items-center justify-center gap-1.5 rounded-2xl py-2.5 px-3 text-xs font-medium bg-primary/10 text-primary hover:bg-primary/15 transition"
+          className="flex items-center justify-center gap-1.5 rounded-2xl py-2.5 px-3 text-xs font-medium bg-primary/10 text-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 transition"
         >
-          <BookOpen className="h-3.5 w-3.5" />
+          <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
           Hub
         </a>
         <button
           onClick={onDisconnect}
-          className="flex items-center justify-center gap-1.5 rounded-2xl py-2.5 px-3 text-xs font-medium border border-border/60 hover:bg-muted transition"
+          className="flex items-center justify-center gap-1.5 rounded-2xl py-2.5 px-3 text-xs font-medium border border-border/60 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 transition"
         >
-          <LogOut className="h-3.5 w-3.5" />
+          <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
           Leave
         </button>
       </div>

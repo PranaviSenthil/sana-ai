@@ -49,6 +49,7 @@ import { Route as ApiGroupMeetStatusRouteImport } from './routes/api/group-meet/
 import { Route as ApiGroupMeetStartRouteImport } from './routes/api/group-meet/start'
 import { Route as ApiGroupMeetJoinRouteImport } from './routes/api/group-meet/join'
 import { Route as ApiGroupMeetEndRouteImport } from './routes/api/group-meet/end'
+import { Route as ApiClassroomDebugRouteImport } from './routes/api/classroom/debug'
 import { Route as AuthenticatedVoiceCallNewRouteImport } from './routes/_authenticated/voice-call.new'
 import { Route as AuthenticatedStudyTogetherCreateRouteImport } from './routes/_authenticated/study-together.create'
 import { Route as AuthenticatedStudyTogetherGroupIdRouteImport } from './routes/_authenticated/study-together.$groupId'
@@ -276,6 +277,11 @@ const ApiGroupMeetEndRoute = ApiGroupMeetEndRouteImport.update({
   path: '/api/group-meet/end',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiClassroomDebugRoute = ApiClassroomDebugRouteImport.update({
+  id: '/api/classroom/debug',
+  path: '/api/classroom/debug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedVoiceCallNewRoute =
   AuthenticatedVoiceCallNewRouteImport.update({
     id: '/voice-call/new',
@@ -452,6 +458,7 @@ export interface FileRoutesByFullPath {
   '/study-together/$groupId': typeof AuthenticatedStudyTogetherGroupIdRoute
   '/study-together/create': typeof AuthenticatedStudyTogetherCreateRoute
   '/voice-call/new': typeof AuthenticatedVoiceCallNewRoute
+  '/api/classroom/debug': typeof ApiClassroomDebugRoute
   '/api/group-meet/end': typeof ApiGroupMeetEndRoute
   '/api/group-meet/join': typeof ApiGroupMeetJoinRoute
   '/api/group-meet/start': typeof ApiGroupMeetStartRoute
@@ -514,6 +521,7 @@ export interface FileRoutesByTo {
   '/study-together/$groupId': typeof AuthenticatedStudyTogetherGroupIdRoute
   '/study-together/create': typeof AuthenticatedStudyTogetherCreateRoute
   '/voice-call/new': typeof AuthenticatedVoiceCallNewRoute
+  '/api/classroom/debug': typeof ApiClassroomDebugRoute
   '/api/group-meet/end': typeof ApiGroupMeetEndRoute
   '/api/group-meet/join': typeof ApiGroupMeetJoinRoute
   '/api/group-meet/start': typeof ApiGroupMeetStartRoute
@@ -580,6 +588,7 @@ export interface FileRoutesById {
   '/_authenticated/study-together/$groupId': typeof AuthenticatedStudyTogetherGroupIdRoute
   '/_authenticated/study-together/create': typeof AuthenticatedStudyTogetherCreateRoute
   '/_authenticated/voice-call/new': typeof AuthenticatedVoiceCallNewRoute
+  '/api/classroom/debug': typeof ApiClassroomDebugRoute
   '/api/group-meet/end': typeof ApiGroupMeetEndRoute
   '/api/group-meet/join': typeof ApiGroupMeetJoinRoute
   '/api/group-meet/start': typeof ApiGroupMeetStartRoute
@@ -646,6 +655,7 @@ export interface FileRouteTypes {
     | '/study-together/$groupId'
     | '/study-together/create'
     | '/voice-call/new'
+    | '/api/classroom/debug'
     | '/api/group-meet/end'
     | '/api/group-meet/join'
     | '/api/group-meet/start'
@@ -708,6 +718,7 @@ export interface FileRouteTypes {
     | '/study-together/$groupId'
     | '/study-together/create'
     | '/voice-call/new'
+    | '/api/classroom/debug'
     | '/api/group-meet/end'
     | '/api/group-meet/join'
     | '/api/group-meet/start'
@@ -773,6 +784,7 @@ export interface FileRouteTypes {
     | '/_authenticated/study-together/$groupId'
     | '/_authenticated/study-together/create'
     | '/_authenticated/voice-call/new'
+    | '/api/classroom/debug'
     | '/api/group-meet/end'
     | '/api/group-meet/join'
     | '/api/group-meet/start'
@@ -813,6 +825,7 @@ export interface RootRouteChildren {
   ApiStudySessionRoute: typeof ApiStudySessionRoute
   ApiTeachPrepRoute: typeof ApiTeachPrepRoute
   ApiTeachReflectionRoute: typeof ApiTeachReflectionRoute
+  ApiClassroomDebugRoute: typeof ApiClassroomDebugRoute
   ApiGroupMeetEndRoute: typeof ApiGroupMeetEndRoute
   ApiGroupMeetJoinRoute: typeof ApiGroupMeetJoinRoute
   ApiGroupMeetStartRoute: typeof ApiGroupMeetStartRoute
@@ -1106,6 +1119,13 @@ declare module '@tanstack/react-router' {
       path: '/api/group-meet/end'
       fullPath: '/api/group-meet/end'
       preLoaderRoute: typeof ApiGroupMeetEndRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/classroom/debug': {
+      id: '/api/classroom/debug'
+      path: '/api/classroom/debug'
+      fullPath: '/api/classroom/debug'
+      preLoaderRoute: typeof ApiClassroomDebugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/voice-call/new': {
@@ -1429,6 +1449,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiStudySessionRoute: ApiStudySessionRoute,
   ApiTeachPrepRoute: ApiTeachPrepRoute,
   ApiTeachReflectionRoute: ApiTeachReflectionRoute,
+  ApiClassroomDebugRoute: ApiClassroomDebugRoute,
   ApiGroupMeetEndRoute: ApiGroupMeetEndRoute,
   ApiGroupMeetJoinRoute: ApiGroupMeetJoinRoute,
   ApiGroupMeetStartRoute: ApiGroupMeetStartRoute,
