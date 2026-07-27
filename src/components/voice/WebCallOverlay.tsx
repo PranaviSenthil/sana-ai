@@ -20,6 +20,7 @@ import replyAvatar from "@/assets/reply-avatar.png";
 import {
   startWebCall,
   processUserResponseIntent,
+  executeRescheduleReminder,
   type CallStatus,
   type WebCallConfig,
 } from "@/lib/vapi-client";
@@ -53,7 +54,7 @@ export function WebCallOverlay({
   const ringtoneTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Default reminder info fallback
-  const userName = config?.userName || "Sanjai";
+  const userName = config?.userName || "";
   const title = config?.reminderTitle || "DBMS Study Session";
   const topic = config?.topic || "Functions & Modules Revision";
 
@@ -183,12 +184,16 @@ export function WebCallOverlay({
   };
 
   // Quick Snooze / Remind Me Handler
-  const handleSnooze = (minutes: number) => {
+  const handleSnooze = async (minutes: number) => {
     stopRingtone();
-    const newDate = new Date(Date.now() + minutes * 60_000);
-    const timeStr = newDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    toast.success(`Call snoozed. Sana will call you back at ${timeStr}`);
-    onRescheduled?.(timeStr, minutes);
+    try {
+      const formatted = await executeRescheduleReminder(config?.reminderId, minutes, config || undefined);
+      toast.success(`Call snoozed. Sana will call you back at ${formatted}`);
+      onRescheduled?.(formatted, minutes);
+    } catch (err) {
+      console.error("Failed to snooze reminder:", err);
+      toast.error("Failed to reschedule reminder");
+    }
     onClose();
   };
 
@@ -321,7 +326,7 @@ export function WebCallOverlay({
               </div>
               <div>
                 <div className="text-xs font-bold text-purple-200">
-                  Hey {userName}! 👋
+                  Hey there! 👋
                 </div>
                 <div className="mt-0.5 text-xs text-slate-300 leading-snug">
                   Time to continue your <span className="font-semibold text-white">{title}</span> session. Ready?

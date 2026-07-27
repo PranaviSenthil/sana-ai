@@ -44,6 +44,33 @@ export function useWebCallReminder() {
     };
   }, []);
 
+  // Listen for client-side test call reschedules
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    const handleRescheduleTest = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail) return;
+      const { minutes, config: testConfig } = detail;
+      const delay = minutes * 60_000;
+
+      const timer = setTimeout(() => {
+        triggerIncomingWebCall({
+          ...testConfig,
+          reminderTitle: testConfig?.reminderTitle || "Rescheduled Test Session",
+        });
+      }, delay);
+      timers.push(timer);
+    };
+
+    window.addEventListener("reschedule-test-call", handleRescheduleTest);
+    return () => {
+      window.removeEventListener("reschedule-test-call", handleRescheduleTest);
+      timers.forEach(clearTimeout);
+    };
+  }, []);
+
   // Monitor scheduled reminders and open incoming call modal when due
   useEffect(() => {
     if (!reminders || typeof window === "undefined") return;
@@ -94,7 +121,7 @@ export function useWebCallReminder() {
     triggerIncomingWebCall({
       reminderTitle: customTitle || "Functions & Modules Revision",
       topic: "Python & Data Structures",
-      userName: "Sanjai",
+      userName: "",
       persona: "friendly_coach",
     });
   }, []);

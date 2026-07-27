@@ -79,10 +79,25 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+function WebCallReminderWrapper() {
+  const { queryClient } = Route.useRouteContext();
+  const { isOverlayOpen, activeCallConfig, closeWebCall } = useWebCallReminder();
+
+  return (
+    <WebCallOverlay
+      isOpen={isOverlayOpen}
+      config={activeCallConfig}
+      onClose={closeWebCall}
+      onRescheduled={() => {
+        queryClient.invalidateQueries({ queryKey: ["reminders"] });
+      }}
+    />
+  );
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
-  const { isOverlayOpen, activeCallConfig, closeWebCall } = useWebCallReminder();
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
@@ -97,14 +112,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <Outlet />
       <Toaster position="top-center" richColors />
-      <WebCallOverlay
-        isOpen={isOverlayOpen}
-        config={activeCallConfig}
-        onClose={closeWebCall}
-        onRescheduled={() => {
-          queryClient.invalidateQueries({ queryKey: ["reminders"] });
-        }}
-      />
+      <WebCallReminderWrapper />
     </QueryClientProvider>
   );
 }

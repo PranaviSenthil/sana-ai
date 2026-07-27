@@ -53,7 +53,8 @@ export function initVapiClient(): Vapi | null {
  */
 export async function executeRescheduleReminder(
   reminderId: string | undefined,
-  minutesFromNow: number
+  minutesFromNow: number,
+  config?: WebCallConfig
 ): Promise<string> {
   const newDate = new Date(Date.now() + minutesFromNow * 60_000);
   const newIso = newDate.toISOString();
@@ -72,6 +73,18 @@ export async function executeRescheduleReminder(
     } catch (err) {
       console.error("Error updating reminder via Supabase:", err);
     }
+  } else {
+    // Client-side reschedule for test calls
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("reschedule-test-call", {
+          detail: {
+            minutes: minutesFromNow,
+            config,
+          },
+        })
+      );
+    }
   }
 
   const formattedTime = newDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -87,18 +100,17 @@ export async function startWebCall(
 ): Promise<() => void> {
   const apiKey = getVapiPublicKey();
   const assistantId = getVapiAssistantId();
-  const name = config.userName || "Sanjai";
   const topic = config.topic || config.reminderTitle || "your study session";
   const vapi = initVapiClient();
 
   events.onStatusChange?.("connecting");
 
   // System instructions for Sana AI caller
-  const systemPrompt = `You are Sana, a warm, motivating, and highly intelligent AI study companion calling ${name}.
-Your current task is to remind ${name} about their scheduled study session: "${config.reminderTitle}" (${topic}).
+  const systemPrompt = `You are Sana, a warm, motivating, and highly intelligent AI study companion.
+Your current task is to remind the student about their scheduled study session: "${config.reminderTitle}" (${topic}).
 
 Conversation Guidelines:
-1. Start by warmly greeting ${name} and asking if they are ready for their study session.
+1. Start by warmly greeting the student with a neutral greeting (such as "Hey!", "Hello!", or "Hi there!") and asking if they are ready for their study session.
 2. Be natural, friendly, short-spoken, and conversational (keep responses under 2-3 sentences).
 3. Handle user responses intelligently:
    - If user is busy, outside, travelling, or tired, ask when to call back (e.g. 15 mins, 30 mins, 1 hour, or tomorrow morning).
@@ -106,7 +118,7 @@ Conversation Guidelines:
    - If user says they'll study now, encourage them warmly and end call politely.
    - If user mentions a specific delay (e.g. "call me after 15 minutes", "remind me in 30 mins"), confirm politely and call reschedule_reminder function.
 
-Always maintain your identity as Sana AI 💕, ${name}'s loyal learning partner.`;
+Always maintain your identity as Sana AI 💕, their loyal learning partner.`;
 
   // Try Vapi SDK first if configured
   if (vapi && apiKey) {
@@ -141,7 +153,7 @@ Always maintain your identity as Sana AI 💕, ${name}'s loyal learning partner.
         if (msg.type === "function-call" && msg.functionCall?.name === "reschedule_reminder") {
           const params = msg.functionCall.parameters || {};
           const mins = Number(params.minutes_from_now) || 15;
-          const formatted = await executeRescheduleReminder(config.reminderId, mins);
+          const formatted = await executeRescheduleReminder(config.reminderId, mins, config);
           events.onRescheduled?.(formatted, mins);
         }
       });
@@ -152,7 +164,13 @@ Always maintain your identity as Sana AI 💕, ${name}'s loyal learning partner.
       });
 
       if (assistantId) {
-        await vapi.start(assistantId);
+        await vapi.start(assistantId, {
+          voice: {
+            provider: "playht",
+            voiceId: "s3://voice-cloning-zero-shot/d92078bd-f450-4baa-800d-5bd1074ee700/sana/manifest.json",
+          },
+          firstMessage: `Hey there! 👋 It's time for your ${config.reminderTitle} study session. Are you ready to start?`,
+        } as any);
       } else {
         // Dynamic transient assistant configuration
         await vapi.start({
@@ -182,7 +200,7 @@ Always maintain your identity as Sana AI 💕, ${name}'s loyal learning partner.
             provider: "playht",
             voiceId: "s3://voice-cloning-zero-shot/d92078bd-f450-4baa-800d-5bd1074ee700/sana/manifest.json",
           },
-          firstMessage: `Hey ${name}! 👋 It's time for your ${config.reminderTitle} study session. Are you ready to start?`,
+          firstMessage: `Hey there! 👋 It's time for your ${config.reminderTitle} study session. Are you ready to start?`,
         } as any);
       }
 
@@ -206,7 +224,6 @@ function startWebSpeechFallback(
   _systemPrompt: string,
   events: VapiCallEvents
 ): () => void {
-  const name = config.userName || "Sanjai";
   const topic = config.reminderTitle || "your study session";
   let isCleanedUp = false;
 
@@ -215,7 +232,7 @@ function startWebSpeechFallback(
     events.onStatusChange?.("connected");
 
     // First greeting
-    const initialText = `Hey ${name}! 👋 Time for your ${topic} study session. Are you ready to get started?`;
+    const initialText = `Hey there! 👋 Time for your ${topic} study session. Are you ready to get started?`;
     speakText(initialText, events, () => {
       if (!isCleanedUp) listenUserVoice(config, events);
     });
@@ -240,15 +257,80 @@ function speakText(text: string, events: VapiCallEvents, onEnded?: () => void) {
     return;
   }
 
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length === 0) {
+    // Chrome loads voices asynchronously. Wait for them.
+    const handleVoicesChanged = () => {
+      // Clean up event handler
+      window.speechSynthesis.onvoiceschanged = null;
+      speakTextActual(text, events, onEnded);
+    };
+    window.speechSynthesis.onvoiceschanged = handleVoicesChanged;
+
+    // Safety fallback: if event doesn't fire in 250ms, speak anyway
+    setTimeout(() => {
+      if (window.speechSynthesis.onvoiceschanged === handleVoicesChanged) {
+        window.speechSynthesis.onvoiceschanged = null;
+        speakTextActual(text, events, onEnded);
+      }
+    }, 250);
+    return;
+  }
+
+  speakTextActual(text, events, onEnded);
+}
+
+function speakTextActual(text: string, events: VapiCallEvents, onEnded?: () => void) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+    events.onTranscript?.("assistant", text);
+    onEnded?.();
+    return;
+  }
+
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.rate = 1.0;
   utterance.pitch = 1.1; // Gentle, friendly female tone pitch
 
   const voices = window.speechSynthesis.getVoices();
-  const femaleVoice = voices.find(
-    (v) => v.lang.startsWith("en") && (v.name.includes("Female") || v.name.includes("Google") || v.name.includes("Samantha") || v.name.includes("Natural") || v.name.includes("Zira"))
-  ) || voices.find((v) => v.lang.startsWith("en"));
+  const prioritizedFemaleVoiceNames = [
+    "Google US English",
+    "Microsoft Zira Desktop - English (United States)",
+    "Microsoft Zira Desktop",
+    "Samantha",
+    "Victoria",
+    "Hazel",
+    "Zira"
+  ];
+
+  let femaleVoice = voices.find((v) => {
+    if (!v.lang.startsWith("en")) return false;
+    const nameLower = v.name.toLowerCase();
+    return prioritizedFemaleVoiceNames.some((prefName) => nameLower.includes(prefName.toLowerCase()));
+  });
+
+  // Fallback to any English voice containing female keywords
+  if (!femaleVoice) {
+    femaleVoice = voices.find((v) => {
+      if (!v.lang.startsWith("en")) return false;
+      const nameLower = v.name.toLowerCase();
+      return (
+        nameLower.includes("female") ||
+        nameLower.includes("samantha") ||
+        nameLower.includes("zira") ||
+        nameLower.includes("hazel") ||
+        nameLower.includes("karen") ||
+        nameLower.includes("susan") ||
+        nameLower.includes("tessa") ||
+        nameLower.includes("moira")
+      );
+    });
+  }
+
+  // Final fallback to any English voice
+  if (!femaleVoice) {
+    femaleVoice = voices.find((v) => v.lang.startsWith("en"));
+  }
 
   if (femaleVoice) utterance.voice = femaleVoice;
 
@@ -314,6 +396,62 @@ function listenUserVoice(config: WebCallConfig, events: VapiCallEvents) {
 }
 
 /**
+ * Helper to parse custom snooze minutes from natural user responses
+ */
+function parseSnoozeMinutes(text: string): number {
+  const lower = text.toLowerCase();
+
+  // 1. Check for specific common word combinations
+  if (lower.includes("half an hour")) return 30;
+  if (lower.includes("an hour") || lower.includes("one hour")) return 60;
+  if (lower.includes("tomorrow") || lower.includes("next day")) return 1440;
+
+  // 2. Regular expression for digit numbers: "5 min", "2 hours", etc.
+  const digitMatch = lower.match(/(\d+)\s*(min|minute|minutes|hr|hour|hours)/i);
+  if (digitMatch) {
+    const val = parseInt(digitMatch[1], 10);
+    const unit = digitMatch[2].toLowerCase();
+    if (unit.startsWith("hr") || unit.startsWith("hour")) {
+      return val * 60;
+    }
+    return val;
+  }
+
+  // 3. Check for word numbers: "two minutes", "five min", etc.
+  const wordNumbers: { [key: string]: number } = {
+    one: 1, two: 2, three: 3, four: 4, five: 5,
+    six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+    fifteen: 15, twenty: 20, thirty: 30, forty: 40, fifty: 50
+  };
+
+  const words = Object.keys(wordNumbers).join("|");
+  const wordRegex = new RegExp(`\\b(${words})\\b\\s*(min|minute|minutes|hr|hour|hours)`, "i");
+  const wordMatch = lower.match(wordRegex);
+  if (wordMatch) {
+    const val = wordNumbers[wordMatch[1].toLowerCase()];
+    const unit = wordMatch[2].toLowerCase();
+    if (unit.startsWith("hr") || unit.startsWith("hour")) {
+      return val * 60;
+    }
+    return val;
+  }
+
+  // 4. Default busy/later fallbacks
+  if (
+    lower.includes("busy") ||
+    lower.includes("outside") ||
+    lower.includes("travelling") ||
+    lower.includes("tired") ||
+    lower.includes("later") ||
+    lower.includes("snooze")
+  ) {
+    return 30; // default 30 mins postpone
+  }
+
+  return 0;
+}
+
+/**
  * Intelligent Intent Parser for Rescheduling & AI Responses
  */
 export async function processUserResponseIntent(
@@ -324,17 +462,10 @@ export async function processUserResponseIntent(
   const lower = userText.toLowerCase();
 
   // Reschedule intent parsing
-  let snoozeMins = 0;
-  if (lower.includes("15 min") || lower.includes("15 minutes") || lower.includes("fifteen")) snoozeMins = 15;
-  else if (lower.includes("30 min") || lower.includes("30 minutes") || lower.includes("half an hour")) snoozeMins = 30;
-  else if (lower.includes("1 hour") || lower.includes("an hour") || lower.includes("60 min")) snoozeMins = 60;
-  else if (lower.includes("tomorrow") || lower.includes("next day")) snoozeMins = 1440;
-  else if (lower.includes("busy") || lower.includes("outside") || lower.includes("travelling") || lower.includes("tired") || lower.includes("later")) {
-    snoozeMins = 30; // default 30 mins postpone
-  }
+  const snoozeMins = parseSnoozeMinutes(lower);
 
   if (snoozeMins > 0) {
-    const formatted = await executeRescheduleReminder(config.reminderId, snoozeMins);
+    const formatted = await executeRescheduleReminder(config.reminderId, snoozeMins, config);
     events.onRescheduled?.(formatted, snoozeMins);
     const reply = `No problem! I've rescheduled your study reminder for ${formatted}. Get some rest and see you then! 💕`;
     speakText(reply, events, () => {

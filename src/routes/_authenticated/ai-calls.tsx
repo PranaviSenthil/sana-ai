@@ -58,7 +58,7 @@ function AICallsPage() {
     triggerIncomingWebCall({
       reminderTitle: upcoming[0]?.title || "DBMS Functions & Modules Revision",
       topic: "Python & DBMS Architecture",
-      userName: "Sanjai",
+      userName: "",
       persona: "friendly_coach",
     });
   };
