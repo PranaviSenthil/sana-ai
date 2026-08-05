@@ -43,14 +43,56 @@ export function SectionHeading({ text }: { text: string }) {
   );
 }
 
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 export function Paragraph({ text }: { text: string }) {
+  // Fix broken tables (LLMs sometimes add blank lines between table rows, or forget a blank line before the table)
+  const processedContent = text
+    .replace(/^([ \t]*\|[^\n]*\|[ \t]*\r?\n)([ \t]*\r?\n)+(?=[ \t]*\|)/gm, '$1')
+    .replace(/(^|\n)(?![ \t]*\|)([^\n]+)\n([ \t]*\|(?=.*\|))/g, '$1$2\n\n$3');
+
   return (
-    <p
+    <div
       className="my-2 text-[15px] leading-[28px] text-[#1a1a2e]"
       style={{ fontFamily: "var(--font-sans)" }}
     >
-      <HandwritingText text={text} />
-    </p>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          table: ({ children }) => (
+            <div className="my-4 overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+              <div className="overflow-x-auto no-scrollbar">
+                <table className="w-full border-collapse text-[14px]">{children}</table>
+              </div>
+            </div>
+          ),
+          thead: ({ children }) => (
+            <thead className="bg-gradient-to-r from-primary/10 via-lavender/60 to-primary/5 text-foreground">
+              {children}
+            </thead>
+          ),
+          tbody: ({ children }) => <tbody className="divide-y divide-border/60">{children}</tbody>,
+          tr: ({ children }) => <tr className="transition even:bg-muted/20 hover:bg-primary/5">{children}</tr>,
+          th: ({ children }) => (
+            <th className="px-4 py-2.5 text-left text-[12.5px] font-black uppercase tracking-wider text-primary">
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td className="px-4 py-2.5 align-top leading-relaxed">{children}</td>
+          ),
+          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+          strong: ({ children }) => <strong className="font-bold text-indigo-900">{children}</strong>,
+          em: ({ children }) => <em className="italic opacity-90">{children}</em>,
+          ul: ({ children }) => <ul className="my-2 space-y-1 pl-4 list-disc marker:text-indigo-300">{children}</ul>,
+          ol: ({ children }) => <ol className="my-2 space-y-1 pl-4 list-decimal marker:text-indigo-400 marker:font-bold">{children}</ol>,
+          li: ({ children }) => <li className="pl-1">{children}</li>,
+        }}
+      >
+        {processedContent}
+      </ReactMarkdown>
+    </div>
   );
 }
 
@@ -93,6 +135,47 @@ function CardShell({
   );
 }
 
+export function MarkdownText({ text }: { text: string }) {
+  const processedContent = text
+    .replace(/^([ \t]*\|[^\n]*\|[ \t]*\r?\n)([ \t]*\r?\n)+(?=[ \t]*\|)/gm, '$1')
+    .replace(/(^|\n)(?![ \t]*\|)([^\n]+)\n([ \t]*\|(?=.*\|))/g, '$1$2\n\n$3');
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        table: ({ children }) => (
+            <div className="my-4 overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+              <div className="overflow-x-auto no-scrollbar">
+                <table className="w-full border-collapse text-[14px]">{children}</table>
+              </div>
+            </div>
+          ),
+        thead: ({ children }) => (
+          <thead className="bg-gradient-to-r from-primary/10 via-lavender/60 to-primary/5 text-foreground">
+            {children}
+          </thead>
+        ),
+        tbody: ({ children }) => <tbody className="divide-y divide-border/60">{children}</tbody>,
+        tr: ({ children }) => <tr className="transition even:bg-muted/20 hover:bg-primary/5">{children}</tr>,
+        th: ({ children }) => (
+          <th className="px-4 py-2.5 text-left text-[12.5px] font-black uppercase tracking-wider text-primary">
+            {children}
+          </th>
+        ),
+        td: ({ children }) => <td className="px-4 py-2.5 align-top leading-relaxed">{children}</td>,
+        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+        strong: ({ children }) => <strong className="font-bold opacity-90">{children}</strong>,
+        em: ({ children }) => <em className="italic opacity-80">{children}</em>,
+        ul: ({ children }) => <ul className="my-2 space-y-1 pl-4 list-disc opacity-90">{children}</ul>,
+        ol: ({ children }) => <ol className="my-2 space-y-1 pl-4 list-decimal opacity-90">{children}</ol>,
+        li: ({ children }) => <li className="pl-1">{children}</li>,
+      }}
+    >
+      {processedContent}
+    </ReactMarkdown>
+  );
+}
+
 export function DefinitionCard({
   term,
   text,
@@ -107,7 +190,7 @@ export function DefinitionCard({
           {term}
         </div>
       )}
-      <p className="text-[14.5px] leading-[24px]">{text}</p>
+      <div className="text-[14.5px] leading-[24px]"><MarkdownText text={text} /></div>
     </CardShell>
   );
 }
@@ -115,7 +198,7 @@ export function DefinitionCard({
 export function WhyCard({ text }: { text: string }) {
   return (
     <CardShell tone="purple" icon={Target} label="Why it matters">
-      <p className="text-[14.5px] leading-[24px]">{text}</p>
+      <div className="text-[14.5px] leading-[24px]"><MarkdownText text={text} /></div>
     </CardShell>
   );
 }
@@ -123,9 +206,9 @@ export function WhyCard({ text }: { text: string }) {
 export function AnalogyCard({ text }: { text: string }) {
   return (
     <CardShell tone="purple" icon={Compass} label="Analogy">
-      <p className="font-handwriting text-[17px] leading-[26px] text-[#4c1d95]">
-        {text}
-      </p>
+      <div className="font-handwriting text-[17px] leading-[26px] text-[#4c1d95]">
+        <MarkdownText text={text} />
+      </div>
     </CardShell>
   );
 }
@@ -133,7 +216,7 @@ export function AnalogyCard({ text }: { text: string }) {
 export function ExampleCard({ text }: { text: string }) {
   return (
     <CardShell tone="green" icon={Lightbulb} label="Example">
-      <p className="text-[14.5px] leading-[24px] whitespace-pre-wrap">{text}</p>
+      <div className="text-[14.5px] leading-[24px]"><MarkdownText text={text} /></div>
     </CardShell>
   );
 }
@@ -141,7 +224,7 @@ export function ExampleCard({ text }: { text: string }) {
 export function RealWorldCard({ text }: { text: string }) {
   return (
     <CardShell tone="green" icon={Rocket} label="Real-world">
-      <p className="text-[14.5px] leading-[24px]">{text}</p>
+      <div className="text-[14.5px] leading-[24px]"><MarkdownText text={text} /></div>
     </CardShell>
   );
 }
