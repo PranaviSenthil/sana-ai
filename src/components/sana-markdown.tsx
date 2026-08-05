@@ -33,6 +33,15 @@ type Props = {
 
 function SanaMarkdownInner({ content, onChip, busy, isLastAssistant, streaming, onAction }: Props) {
   const chipsInteractive = !!onChip && !!isLastAssistant && !streaming;
+  
+  // Fix broken tables (LLMs sometimes add blank lines between table rows)
+  const processedContent = useMemo(() => {
+    if (!content) return "";
+    return content
+      .replace(/^([ \t]*\|[^\n]*\|[ \t]*\r?\n)([ \t]*\r?\n)+(?=[ \t]*\|)/gm, '$1')
+      .replace(/(^|\n)(?![ \t]*\|)([^\n]+)\n([ \t]*\|(?=.*\|))/g, '$1$2\n\n$3');
+  }, [content]);
+
   return (
     <div className={streaming ? "sana-stream" : undefined}>
       <ReactMarkdown
@@ -41,29 +50,29 @@ function SanaMarkdownInner({ content, onChip, busy, isLastAssistant, streaming, 
         skipHtml
         components={{
           h1: ({ children }) => (
-            <h2 className="mb-2 mt-1 text-[15px] font-black leading-tight text-foreground">{children}</h2>
+            <h2 className="mb-3 mt-2 text-[20px] font-black leading-tight text-foreground">{children}</h2>
           ),
           h2: ({ children }) => (
-            <div className="mb-2 mt-3 flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
-              <h3 className="text-[14px] font-black leading-tight">{children}</h3>
+            <div className="mb-2 mt-4 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+              <h3 className="text-[17.5px] font-black leading-tight">{children}</h3>
             </div>
           ),
           h3: ({ children }) => (
-            <h4 className="mb-1.5 mt-3 text-[13px] font-bold text-foreground">{children}</h4>
+            <h4 className="mb-1.5 mt-3 text-[16px] font-bold text-foreground">{children}</h4>
           ),
           p: ({ children }) => (
-            <p className="mb-2 text-[13px] leading-relaxed last:mb-0">{children}</p>
+            <p className="mb-2 text-[15.5px] leading-relaxed last:mb-0">{children}</p>
           ),
-          ul: ({ children }) => <ul className="my-2 space-y-1 pl-0">{children}</ul>,
+          ul: ({ children }) => <ul className="my-2 space-y-1.5 pl-0">{children}</ul>,
           li: ({ children }) => (
-            <li className="flex gap-2 text-[13px] leading-snug">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+            <li className="flex gap-2.5 text-[15.5px] leading-snug">
+              <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
               <span className="min-w-0 flex-1">{children}</span>
             </li>
           ),
           ol: ({ children }) => (
-            <ol className="my-2 list-decimal space-y-1 pl-5 text-[13px] marker:font-bold marker:text-primary">{children}</ol>
+            <ol className="my-2 list-decimal space-y-1.5 pl-5 text-[15.5px] marker:font-bold marker:text-primary">{children}</ol>
           ),
           blockquote: ({ children }) => <Callout>{children}</Callout>,
           strong: ({ children }) => <strong className="font-bold text-foreground">{children}</strong>,
@@ -75,11 +84,11 @@ function SanaMarkdownInner({ content, onChip, busy, isLastAssistant, streaming, 
             if (children === "▋") return <span className="animate-pulse text-primary font-bold ml-0.5">▋</span>;
             return <del className="line-through">{children}</del>;
           },
-          hr: () => <hr className="my-3 border-border" />,
+          hr: () => <hr className="my-4 border-border" />,
           table: ({ children }) => (
-            <div className="my-3 overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+            <div className="my-4 overflow-hidden rounded-2xl border border-border bg-card shadow-card">
               <div className="overflow-x-auto no-scrollbar">
-                <table className="w-full border-collapse text-[12px]">{children}</table>
+                <table className="w-full border-collapse text-[14px]">{children}</table>
               </div>
             </div>
           ),
@@ -91,17 +100,17 @@ function SanaMarkdownInner({ content, onChip, busy, isLastAssistant, streaming, 
           tbody: ({ children }) => <tbody className="divide-y divide-border/60">{children}</tbody>,
           tr: ({ children }) => <tr className="transition even:bg-muted/20 hover:bg-primary/5">{children}</tr>,
           th: ({ children }) => (
-            <th className="px-3 py-2 text-left text-[11px] font-black uppercase tracking-wider text-primary">
+            <th className="px-4 py-2.5 text-left text-[12.5px] font-black uppercase tracking-wider text-primary">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td className="px-3 py-2 align-top text-[12.5px] leading-relaxed">{children}</td>
+            <td className="px-4 py-2.5 align-top text-[14px] leading-relaxed">{children}</td>
           ),
           img: ({ src, alt }) => (
-            <span className="my-3 block overflow-hidden rounded-2xl border border-border bg-muted/20">
+            <span className="my-4 block overflow-hidden rounded-2xl border border-border bg-muted/20">
               <img src={src} alt={alt} className="max-h-[400px] w-auto max-w-full object-contain" loading="lazy" />
-              {alt && <span className="block border-t border-border/50 bg-background/50 px-3 py-1.5 text-center text-[11px] font-medium text-muted-foreground">{alt}</span>}
+              {alt && <span className="block border-t border-border/50 bg-background/50 px-3 py-1.5 text-center text-[12.5px] font-medium text-muted-foreground">{alt}</span>}
             </span>
           ),
           pre: ({ children }) => <>{children}</>,
@@ -127,7 +136,7 @@ function SanaMarkdownInner({ content, onChip, busy, isLastAssistant, streaming, 
             if (!isBlock) {
               return (
                 <code
-                  className="rounded-md border border-primary/20 bg-lavender/60 px-1.5 py-0.5 font-mono text-[11.5px] font-semibold text-primary"
+                  className="rounded-md border border-primary/20 bg-lavender/60 px-1.5 py-0.5 font-mono text-[13px] font-semibold text-primary"
                   {...rest}
                 >
                   {children}
@@ -139,7 +148,7 @@ function SanaMarkdownInner({ content, onChip, busy, isLastAssistant, streaming, 
           },
         }}
       >
-        {content}
+        {processedContent}
       </ReactMarkdown>
     </div>
   );
@@ -173,9 +182,9 @@ function Callout({ children }: { children: React.ReactNode }) {
     stripe = "border-destructive/60"; bg = "bg-destructive/10"; iconColor = "text-destructive";
   }
   return (
-    <div className={cn("my-2.5 flex gap-2.5 rounded-xl border-l-4 px-3 py-2.5 text-[12.5px] leading-relaxed", stripe, bg)}>
+    <div className={cn("my-3 flex gap-3 rounded-xl border-l-4 px-4 py-3 text-[14.5px] leading-relaxed", stripe, bg)}>
       <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", iconColor)} />
-      <div className="min-w-0 flex-1 space-y-1 [&>p]:m-0 [&>p]:text-[12.5px]">{children}</div>
+      <div className="min-w-0 flex-1 space-y-1 [&>p]:m-0 [&>p]:text-[14.5px]">{children}</div>
       <span className="sr-only">{variant}</span>
     </div>
   );
@@ -240,10 +249,10 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
         PreTag="div"
         customStyle={{
           margin: 0,
-          padding: "12px 14px",
+          padding: "14px 16px",
           background: "transparent",
-          fontSize: "12px",
-          lineHeight: 1.55,
+          fontSize: "13.5px",
+          lineHeight: 1.6,
         }}
         codeTagProps={{ style: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" } }}
       >
@@ -330,7 +339,7 @@ function ChipsBlock({ raw, onChip, busy }: { raw: string; onChip?: (c: string) =
               }
             }}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold shadow-card transition",
+              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13.5px] font-semibold shadow-card transition",
               interactive && !disabled
                 ? "border-primary/30 bg-card text-primary hover:bg-primary hover:text-primary-foreground active:scale-95"
                 : "border-border bg-muted/60 text-muted-foreground",
@@ -374,8 +383,8 @@ function RoadmapBlock({ raw }: { raw: string }) {
     <div className="my-3 overflow-hidden rounded-2xl border border-border bg-card shadow-card">
       <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-gradient-to-r from-primary/10 via-lavender/50 to-transparent px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
-          <div className="truncate text-[12.5px] font-black">
+          <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+          <div className="truncate text-[14px] font-black">
             Smart Study Roadmap
             {totalMin > 0 && <span className="ml-1 font-bold text-muted-foreground">({fmtMins(totalMin)})</span>}
           </div>
@@ -429,13 +438,13 @@ function RoadmapRow({ item, forceOpen, isLast }: { item: RoadmapItem; forceOpen:
           {icon}
         </span>
         <div className="min-w-0">
-          <div className="truncate text-[12.5px] font-bold leading-tight">{item.title}</div>
+          <div className="truncate text-[14.5px] font-bold leading-tight">{item.title}</div>
           {item.subtitle && (
-            <div className="truncate text-[11px] leading-tight text-muted-foreground">{item.subtitle}</div>
+            <div className="truncate text-[12.5px] leading-tight text-muted-foreground">{item.subtitle}</div>
           )}
         </div>
         {item.duration && (
-          <span className={cn("shrink-0 text-[11px] font-black tabular-nums", durationTone)}>
+          <span className={cn("shrink-0 text-[12.5px] font-black tabular-nums", durationTone)}>
             {item.duration}
           </span>
         )}
@@ -447,10 +456,10 @@ function RoadmapRow({ item, forceOpen, isLast }: { item: RoadmapItem; forceOpen:
         />
       </button>
       {open && (
-        <div className="ml-[74px] mr-2 mt-1 rounded-xl border border-border/70 bg-muted/30 px-3 py-2 text-[11.5px] leading-relaxed text-foreground/85">
+        <div className="ml-[74px] mr-2 mt-1 rounded-xl border border-border/70 bg-muted/30 px-3 py-2 text-[13.5px] leading-relaxed text-foreground/85">
           {item.subtitle ? (
             <>
-              <div className="mb-1 text-[10px] font-black uppercase tracking-wider text-primary">
+              <div className="mb-1 text-[11px] font-black uppercase tracking-wider text-primary">
                 What you'll cover
               </div>
               <div>{item.subtitle}</div>
@@ -571,9 +580,9 @@ function AssignmentsBlock({ raw, onAction }: { raw: string, onAction?: (action: 
             </span>
           </div>
           <div className="pr-16">
-            <h4 className="text-[15px] font-bold text-foreground">{c.title}</h4>
-            <div className="mt-2 flex flex-wrap items-center gap-3 text-[12px] font-medium text-muted-foreground">
-              <span className="flex items-center gap-1">
+            <h4 className="text-[17px] font-bold text-foreground">{c.title}</h4>
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-[13.5px] font-medium text-muted-foreground">
+              <span className="flex items-center gap-1.5">
                 <div className="grid h-5 w-5 place-items-center rounded-full bg-primary/10 text-[10px] text-primary">
                   {c.assignee.substring(0, 1).toUpperCase()}
                 </div>

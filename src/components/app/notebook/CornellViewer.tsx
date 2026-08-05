@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useId } from "react";
 import type { NotebookDoc, NotebookBlock } from "@/lib/study-notes.schema";
 import { BlockRenderer } from "./blocks";
-import { Key, FileText, CheckCircle2, Bookmark, Eye, EyeOff, Sparkles, HelpCircle } from "lucide-react";
+import { Key, FileText, CheckCircle2, Bookmark, Eye, EyeOff, Sparkles, HelpCircle, Maximize, Minimize } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function CornellViewer({ doc }: { doc: NotebookDoc }) {
@@ -10,6 +10,8 @@ export function CornellViewer({ doc }: { doc: NotebookDoc }) {
   const [revealedBlocks, setRevealedBlocks] = useState<Record<string, boolean>>({});
   const [revisionMode, setRevisionMode] = useState(false);
   const [cuesExpandedMobile, setCuesExpandedMobile] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const componentId = useId();
 
   // Extract cues, main notes, and summaries from doc blocks
   const { cues, notes, summaryItems } = useMemo(() => {
@@ -19,7 +21,7 @@ export function CornellViewer({ doc }: { doc: NotebookDoc }) {
 
     doc.blocks.forEach((b, idx) => {
       if (!b) return;
-      const blockId = `cornell-block-${idx}`;
+      const blockId = `cornell-block-${componentId}-${idx}`.replace(/:/g, '');
 
       if (b.kind === "section") {
         cuesList.push({ id: `cue-${idx}`, text: b.text, targetId: blockId });
@@ -125,7 +127,12 @@ export function CornellViewer({ doc }: { doc: NotebookDoc }) {
   };
 
   return (
-    <div className="w-full rounded-3xl border-2 border-slate-800 bg-[#FFFDF9] p-4 sm:p-6 shadow-xl text-slate-800 flex flex-col justify-between transition-all">
+    <div
+      className={cn(
+        "w-full rounded-3xl border-2 border-slate-800 bg-[#FFFDF9] p-4 sm:p-6 shadow-xl text-slate-800 flex flex-col justify-between transition-all",
+        isFullScreen ? "fixed inset-0 z-50 overflow-y-auto" : "relative max-h-[78vh] overflow-y-auto"
+      )}
+    >
       {/* Header bar */}
       <div className="shrink-0 border-b-2 border-slate-800 pb-4 mb-4">
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-bold uppercase tracking-wider text-slate-600">
@@ -139,8 +146,15 @@ export function CornellViewer({ doc }: { doc: NotebookDoc }) {
           <div className="hidden md:block text-indigo-800 font-black tracking-widest bg-indigo-50 border border-indigo-200 px-3 py-0.5 rounded-full text-[10px]">
             CORNELL STUDY SYSTEM
           </div>
-          <div className="text-slate-500 font-semibold">
-            Date: <span className="text-slate-800">{new Date().toLocaleDateString()}</span>
+          <div className="flex items-center gap-2 text-slate-500 font-semibold">
+            <div>Date: <span className="text-slate-800">{new Date().toLocaleDateString()}</span></div>
+            <button
+              onClick={() => setIsFullScreen(!isFullScreen)}
+              className="rounded-xl border border-slate-300 bg-white p-1.5 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 ml-2 cursor-pointer shadow-sm"
+              title={isFullScreen ? "Exit Full Screen" : "Full Screen"}
+            >
+              {isFullScreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+            </button>
           </div>
         </div>
 

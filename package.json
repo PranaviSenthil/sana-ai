@@ -71,7 +71,8 @@
     "libphonenumber-js": "^1.13.7",
     "lucide-react": "^0.575.0",
     "mammoth": "^1.12.0",
-    "pdf-parse": "^2.4.5",
+    "pdf-parse": "^1.1.1",
+    "pg": "^8.11.3",
     "react": "^19.2.0",
     "react-day-picker": "^9.14.0",
     "react-dom": "^19.2.0",
@@ -88,12 +89,9 @@
     "tw-animate-css": "^1.3.4",
     "vaul": "^1.1.2",
     "zod": "^3.24.2",
-    "zustand": "^5.0.14",
-    "pg": "^8.11.3",
-    "pdf-parse": "^1.1.1"
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@types/pg": "^8.11.2",
     "@eslint/js": "^9.32.0",
     "@lovable.dev/vite-tanstack-config": "2.7.0",
     "@testing-library/jest-dom": "^6.9.1",
@@ -102,6 +100,7 @@
     "@types/canvas-confetti": "^1.9.0",
     "@types/jest-axe": "^3.5.9",
     "@types/node": "^22.16.5",
+    "@types/pg": "^8.11.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.3",

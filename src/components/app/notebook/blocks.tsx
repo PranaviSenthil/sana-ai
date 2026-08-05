@@ -18,6 +18,8 @@ import {
 import { toast } from "sonner";
 import type { NotebookBlock, StudyStyleT } from "@/lib/study-notes.schema";
 import { cn } from "@/lib/utils";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 
 /* --------------------------- Primitives --------------------------- */
@@ -55,26 +57,7 @@ export function SectionHeading({ text, style = "ruled" }: { text: string; style?
 }
 
 export function Paragraph({ text, style = "ruled" }: { text: string; style?: StudyStyleT }) {
-  if (style === "book") {
-    return (
-      <p className="my-3 font-serif text-[15px] leading-[26px] text-slate-800 text-justify">
-        {text}
-      </p>
-    );
-  }
-  if (style === "unruled" || style === "mindmap" || style === "cornell") {
-    return (
-      <p className="my-3 font-sans text-[13.5px] leading-[22px] text-slate-600">
-        {text}
-      </p>
-    );
-  }
-  // Default: ruled handwriting style
-  return (
-    <p className="my-2 font-handwriting text-[17px] leading-[28px] text-slate-800">
-      <HandwritingText text={text} />
-    </p>
-  );
+  return <MarkdownText text={text} style={style} />;
 }
 
 /* --------------------------- Cards Shell ------------------------------- */
@@ -165,6 +148,58 @@ function CardShell({
   );
 }
 
+
+
+/* --------------------------- Markdown Renderer ------------------------------- */
+
+export function MarkdownText({ text, style = "ruled" }: { text: string; style?: StudyStyleT }) {
+  const processedContent = text
+    .replace(/^([ \t]*\|[^\n]*\|[ \t]*\r?\n)([ \t]*\r?\n)+(?=[ \t]*\|)/gm, '$1')
+    .replace(/(^|\n)(?![ \t]*\|)([^\n]+)\n([ \t]*\|(?=.*\|))/g, '$1$2\n\n$3');
+
+  const pClass = style === "book" 
+    ? "my-3 font-serif text-[15px] leading-[26px] text-slate-800 text-justify"
+    : style === "unruled" || style === "mindmap" || style === "cornell"
+      ? "my-3 font-sans text-[13.5px] leading-[22px] text-slate-600"
+      : "my-2 font-handwriting text-[17px] leading-[28px] text-slate-800";
+
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        table: ({ children }) => (
+          <div className="my-4 overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+            <div className="overflow-x-auto no-scrollbar">
+              <table className="w-full border-collapse text-[14px]">{children}</table>
+            </div>
+          </div>
+        ),
+        thead: ({ children }) => (
+          <thead className="bg-gradient-to-r from-primary/10 via-lavender/60 to-primary/5 text-foreground">
+            {children}
+          </thead>
+        ),
+        tbody: ({ children }) => <tbody className="divide-y divide-border/60">{children}</tbody>,
+        tr: ({ children }) => <tr className="transition even:bg-muted/20 hover:bg-primary/5">{children}</tr>,
+        th: ({ children }) => (
+          <th className="px-4 py-2.5 text-left text-[12.5px] font-black uppercase tracking-wider text-primary">
+            {children}
+          </th>
+        ),
+        td: ({ children }) => <td className="px-4 py-2.5 align-top leading-relaxed">{children}</td>,
+        p: ({ children }) => <p className={cn(pClass, "last:mb-0")}>{children}</p>,
+        strong: ({ children }) => <strong className="font-bold opacity-90">{children}</strong>,
+        em: ({ children }) => <em className="italic opacity-80">{children}</em>,
+        ul: ({ children }) => <ul className="my-2 space-y-1 pl-4 list-disc opacity-90">{children}</ul>,
+        ol: ({ children }) => <ol className="my-2 space-y-1 pl-4 list-decimal opacity-90">{children}</ol>,
+        li: ({ children }) => <li className="pl-1">{children}</li>,
+      }}
+    >
+      {processedContent}
+    </ReactMarkdown>
+  );
+}
+
 /* --------------------------- Cards ------------------------------- */
 
 export function DefinitionCard({ term, text, style = "ruled" }: { term: string | null; text: string; style?: StudyStyleT }) {
@@ -181,7 +216,7 @@ export function DefinitionCard({ term, text, style = "ruled" }: { term: string |
           {term}
         </div>
       )}
-      <p>{text}</p>
+      <MarkdownText text={text} style={style} />
     </CardShell>
   );
 }
@@ -189,7 +224,7 @@ export function DefinitionCard({ term, text, style = "ruled" }: { term: string |
 export function WhyCard({ text, style = "ruled" }: { text: string; style?: StudyStyleT }) {
   return (
     <CardShell tone="purple" icon={Target} label="Why it matters" style={style}>
-      <p>{text}</p>
+      <MarkdownText text={text} style={style} />
     </CardShell>
   );
 }
@@ -197,9 +232,9 @@ export function WhyCard({ text, style = "ruled" }: { text: string; style?: Study
 export function AnalogyCard({ text, style = "ruled" }: { text: string; style?: StudyStyleT }) {
   return (
     <CardShell tone="purple" icon={Compass} label="Analogy" style={style}>
-      <p className={style === "ruled" ? "text-purple-800" : "italic text-slate-700"}>
-        {text}
-      </p>
+      <div className={style === "ruled" ? "text-purple-800" : "italic text-slate-700"}>
+        <MarkdownText text={text} style={style} />
+      </div>
     </CardShell>
   );
 }
@@ -207,7 +242,7 @@ export function AnalogyCard({ text, style = "ruled" }: { text: string; style?: S
 export function ExampleCard({ text, style = "ruled" }: { text: string; style?: StudyStyleT }) {
   return (
     <CardShell tone="green" icon={Lightbulb} label="Example" style={style}>
-      <p className="whitespace-pre-wrap">{text}</p>
+      <MarkdownText text={text} style={style} />
     </CardShell>
   );
 }
@@ -215,7 +250,7 @@ export function ExampleCard({ text, style = "ruled" }: { text: string; style?: S
 export function RealWorldCard({ text, style = "ruled" }: { text: string; style?: StudyStyleT }) {
   return (
     <CardShell tone="green" icon={Rocket} label="Real-world" style={style}>
-      <p>{text}</p>
+      <MarkdownText text={text} style={style} />
     </CardShell>
   );
 }

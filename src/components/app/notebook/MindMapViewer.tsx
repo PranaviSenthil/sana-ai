@@ -2,7 +2,8 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { NotebookDoc, NotebookBlock } from "@/lib/study-notes.schema";
 import { BlockRenderer } from "./blocks";
-import { Sparkles, Network, ChevronRight } from "lucide-react";
+import { Sparkles, Network, ChevronRight, Maximize, Minimize } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface BranchNode {
   id: string;
@@ -12,6 +13,8 @@ interface BranchNode {
 }
 
 export function MindMapViewer({ doc }: { doc: NotebookDoc }) {
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
   // Group doc blocks into branches by section or logical category
   const branches = useMemo(() => {
     const nodes: BranchNode[] = [];
@@ -60,9 +63,28 @@ export function MindMapViewer({ doc }: { doc: NotebookDoc }) {
   const activeBranch = branches.find((b) => b.id === activeBranchId) || branches[0];
 
   return (
-    <div className="w-full max-h-[78vh] overflow-y-auto no-scrollbar rounded-3xl border border-indigo-100 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-4 sm:p-6 shadow-2xl text-white">
+    <div
+      className={cn(
+        "no-scrollbar border border-indigo-100 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-4 sm:p-6 text-white shadow-2xl transition-all duration-300",
+        isFullScreen
+          ? "fixed inset-0 z-50 overflow-y-auto"
+          : "relative w-full max-h-[78vh] overflow-y-auto rounded-3xl"
+      )}
+    >
+      <button
+        onClick={() => setIsFullScreen(!isFullScreen)}
+        className="absolute right-4 top-4 rounded-xl bg-white/10 p-2 text-white/70 transition-colors hover:bg-white/20 hover:text-white"
+        title={isFullScreen ? "Exit Full Screen" : "Full Screen"}
+      >
+        {isFullScreen ? (
+          <Minimize className="h-5 w-5" />
+        ) : (
+          <Maximize className="h-5 w-5" />
+        )}
+      </button>
+
       {/* Central Hub Header */}
-      <div className="flex flex-col items-center justify-center text-center py-4 mb-6 relative">
+      <div className="relative mb-6 mt-4 flex flex-col items-center justify-center text-center py-2">
         <div className="absolute top-0 rounded-full bg-indigo-500/20 blur-2xl h-24 w-48 pointer-events-none" />
         <div className="inline-flex items-center gap-2 rounded-full border border-indigo-400/40 bg-indigo-500/10 px-4 py-1 text-xs font-bold uppercase tracking-widest text-indigo-300 backdrop-blur-md mb-2">
           <Network className="h-3.5 w-3.5 text-indigo-400" /> Visual Mind Map
