@@ -98,6 +98,12 @@ function SanaMarkdownInner({ content, onChip, busy, isLastAssistant, streaming, 
           td: ({ children }) => (
             <td className="px-3 py-2 align-top text-[12.5px] leading-relaxed">{children}</td>
           ),
+          img: ({ src, alt }) => (
+            <span className="my-3 block overflow-hidden rounded-2xl border border-border bg-muted/20">
+              <img src={src} alt={alt} className="max-h-[400px] w-auto max-w-full object-contain" loading="lazy" />
+              {alt && <span className="block border-t border-border/50 bg-background/50 px-3 py-1.5 text-center text-[11px] font-medium text-muted-foreground">{alt}</span>}
+            </span>
+          ),
           pre: ({ children }) => <>{children}</>,
           code: ({ className, children, ...rest }) => {
             const lang = /language-(\w+)/.exec(className ?? "")?.[1];

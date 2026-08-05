@@ -8,7 +8,7 @@ import {
   Menu, X, Search, Plus, Send, Mic, Bell, Sparkles, MessageCircle,
   MoreVertical, FileText, Image as ImageIcon, Youtube, Link2, PenSquare,
   Phone, Timer, HelpCircle, CheckCheck, GraduationCap, BookOpen, Map,
-  Paperclip, Loader2, Square, Trash2, Share, Pin,
+  Paperclip, Loader2, Square, Trash2, Share, Pin, Maximize, Minimize,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -47,6 +47,15 @@ function parseYtCard(text: string): YouTubeVideoMeta | null {
   catch { return null; }
 }
 
+const DOC_CARD_PREFIX = "[[DOCUMENT_CARD]]";
+function parseDocCard(text: string): { name: string; url: string; kind: string; size?: number } | null {
+  if (!text.startsWith(DOC_CARD_PREFIX)) return null;
+  const end = text.indexOf("[[/DOCUMENT_CARD]]");
+  if (end < 0) return null;
+  try { return JSON.parse(text.slice(DOC_CARD_PREFIX.length, end)); }
+  catch { return null; }
+}
+
 /** Convert plain-text timestamps like "1:30:42" or "02:14" into clickable
  *  markdown links pointing at the given YouTube video. Skips timestamps
  *  already inside a markdown link or image. */
@@ -77,7 +86,7 @@ export const Route = createFileRoute("/_authenticated/chat")({
   component: ChatPage,
 });
 
-type Attachment = { id: string; name: string; url: string; kind: "pdf" | "image" | "youtube" };
+type Attachment = { id: string; name: string; url: string; kind: "pdf" | "image" | "youtube" | "docx" | "pptx" | "txt" };
 
 type ClassroomDebug = {
   query: string;
@@ -107,6 +116,7 @@ function ChatPage() {
     try { return JSON.parse(localStorage.getItem("sana_pinned_chats") || "[]"); }
     catch { return []; }
   });
+  const [isFullScreen, setIsFullScreen] = useState(false);
 
   const togglePin = (id: string) => {
     setPinnedChats(prev => {
@@ -387,14 +397,22 @@ function ChatPage() {
 
   const busy = status === "submitted" || status === "streaming";
 
-  async function uploadFile(file: File, kind: "pdf" | "image") {
+  async function uploadFile(file: File, overrideKind?: "image") {
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) { nav({ to: "/auth" }); return; }
     if (file.size > 20 * 1024 * 1024) { toast.error("File is too large (max 20MB)"); return; }
+    
+    let kind: Attachment["kind"] = "txt";
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (overrideKind === "image" || ["png", "jpg", "jpeg", "webp", "gif"].includes(ext)) kind = "image";
+    else if (ext === "pdf") kind = "pdf";
+    else if (ext === "docx") kind = "docx";
+    else if (ext === "pptx") kind = "pptx";
+    else if (ext === "txt") kind = "txt";
+
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop() ?? (kind === "pdf" ? "pdf" : "png");
-      const path = `${u.user.id}/chat/${crypto.randomUUID()}.${ext}`;
+      const path = `${u.user.id}/chat/${crypto.randomUUID()}.${ext || "bin"}`;
       const { error: upErr } = await supabase.storage.from("user-uploads").upload(path, file, {
         contentType: file.type, upsert: false,
       });
@@ -402,11 +420,40 @@ function ChatPage() {
       const { data: signed, error: sErr } = await supabase.storage.from("user-uploads")
         .createSignedUrl(path, 60 * 60 * 24 * 7);
       if (sErr || !signed) throw sErr ?? new Error("sign failed");
+      
       await supabase.from("uploads").insert({
         user_id: u.user.id, kind, storage_path: path, source_url: null,
       });
-      setAttachments((a) => [...a, { id: crypto.randomUUID(), name: file.name, url: signed.signedUrl, kind }]);
-      toast.success(`${kind === "pdf" ? "PDF" : "Image"} attached`);
+      
+      const newAtt = { id: crypto.randomUUID(), name: file.name, url: signed.signedUrl, kind };
+      setAttachments((a) => [...a, newAtt]);
+      
+      // Inject document card immediately if it's a document
+      if (kind !== "image") {
+        const followup = [
+          `**Document uploaded successfully** ✨`,
+          ``,
+          `Ask me anything about this document, or choose an action below.`,
+          ``,
+          `[chip: Summarize document] [chip: Key takeaways] [chip: Create quiz] [chip: Generate notes]`
+        ].join("\n");
+        const payload = `[[DOCUMENT_CARD]]${JSON.stringify({ name: file.name, url: signed.signedUrl, kind, size: file.size })}[[/DOCUMENT_CARD]]\n\n${followup}`;
+        
+        if (threadId) {
+          await supabase.from("chat_messages").insert({
+            thread_id: threadId, user_id: u.user.id, role: "assistant", content: payload,
+          });
+          await supabase.from("chat_threads").update({ last_message_at: new Date().toISOString() }).eq("id", threadId);
+          setMessages((prev) => [
+            ...prev,
+            { id: crypto.randomUUID(), role: "assistant", parts: [{ type: "text", text: payload }] } as any,
+          ]);
+          setHeroDismissed(true);
+          qc.invalidateQueries({ queryKey: ["threads"] });
+        }
+      }
+      
+      toast.success(`${kind.toUpperCase()} attached`);
     } catch (e) {
       console.error(e);
       toast.error("Upload failed");
@@ -583,41 +630,43 @@ function ChatPage() {
   const streamingAssistant = status === "streaming" && lastMsg?.role === "assistant";
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col">
+    <div className={cn("relative flex h-full min-h-0 flex-col", isFullScreen && "fixed inset-0 z-[60] bg-background")}>
       {/* hidden file inputs */}
-      <input ref={pdfInputRef} type="file" accept="application/pdf" className="hidden"
-             onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f, "pdf"); e.currentTarget.value = ""; }} />
+      <input ref={pdfInputRef} type="file" accept=".pdf,.docx,.pptx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain" className="hidden"
+             onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.currentTarget.value = ""; }} />
       <input ref={imgInputRef} type="file" accept="image/*" className="hidden"
              onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f, "image"); e.currentTarget.value = ""; }} />
 
       {/* Header */}
-      <header className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-border/60 px-5 pb-3 pt-6">
-        <button onClick={() => setDrawerOpen(true)} className="grid h-11 w-11 place-items-center rounded-2xl bg-card shadow-card">
-          <Menu className="h-5 w-5" />
-        </button>
-        <div className="min-w-0">
-          <div className="flex items-center gap-1 truncate text-lg font-black">
-            Chat with Sana <Sparkles className="h-4 w-4 text-warning" />
+      {!isFullScreen && (
+        <header className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-border/60 px-5 pb-3 pt-6">
+          <button onClick={() => setDrawerOpen(true)} className="grid h-11 w-11 place-items-center rounded-2xl bg-card shadow-card">
+            <Menu className="h-5 w-5" />
+          </button>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1 truncate text-lg font-black">
+              Chat with Sana <Sparkles className="h-4 w-4 text-warning" />
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="h-2 w-2 rounded-full bg-success" />
+              {busy ? "Sana is typing…" : "Sana is online and ready to help!"}
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span className="h-2 w-2 rounded-full bg-success" />
-            {busy ? "Sana is typing…" : "Sana is online and ready to help!"}
+          <div className="flex items-center gap-2">
+            <Link to="/notifications" className="relative grid h-11 w-11 place-items-center rounded-2xl bg-card shadow-card">
+              <Bell className="h-5 w-5" />
+              <span className="absolute right-1.5 top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">3</span>
+            </Link>
+            <Link to="/profile" className="relative shrink-0">
+              <img src={resolvedAvatarUrl} alt="Profile" className="h-11 w-11 rounded-full border-2 border-card object-cover shadow-card" />
+              <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-card bg-success" />
+            </Link>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link to="/notifications" className="relative grid h-11 w-11 place-items-center rounded-2xl bg-card shadow-card">
-            <Bell className="h-5 w-5" />
-            <span className="absolute right-1.5 top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">3</span>
-          </Link>
-          <Link to="/profile" className="relative shrink-0">
-            <img src={resolvedAvatarUrl} alt="Profile" className="h-11 w-11 rounded-full border-2 border-card object-cover shadow-card" />
-            <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-card bg-success" />
-          </Link>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Study View toggle pill */}
-      <div className="shrink-0 border-b border-border/50 bg-background/60 px-4 py-2 backdrop-blur-xl">
+      <div className="shrink-0 border-b border-border/50 bg-background/60 px-4 py-2 backdrop-blur-xl flex items-center justify-between">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -644,6 +693,18 @@ function ChatPage() {
             </button>
           )}
         </div>
+        <button
+          type="button"
+          onClick={() => setIsFullScreen(!isFullScreen)}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-[12px] font-bold shadow-card text-foreground hover:border-primary/40 transition"
+          aria-label={isFullScreen ? "Exit Full View" : "Full View"}
+        >
+          {isFullScreen ? (
+            <><Minimize className="h-3.5 w-3.5" /> Exit Full View</>
+          ) : (
+            <><Maximize className="h-3.5 w-3.5" /> Full View</>
+          )}
+        </button>
       </div>
 
       {/* Messages */}
@@ -654,17 +715,33 @@ function ChatPage() {
 
         {messages.map((m, i) => {
           const isLast = i === messages.length - 1;
-          const fullText = m.parts.map(p => p.type === "text" ? p.text : "").join("");
+          const fullText = m.parts?.map(p => p.type === "text" ? p.text : "").join("") ?? (m as any).content ?? "";
           const ytCard = parseYtCard(fullText);
-          const afterCard = ytCard ? fullText.slice(fullText.indexOf("[[/YT_CARD]]") + "[[/YT_CARD]]".length).trimStart() : fullText;
+          const docCard = parseDocCard(fullText);
+          
+          let afterCard = fullText;
+          if (ytCard) afterCard = fullText.slice(fullText.indexOf("[[/YT_CARD]]") + "[[/YT_CARD]]".length).trimStart();
+          else if (docCard) afterCard = fullText.slice(fullText.indexOf("[[/DOCUMENT_CARD]]") + "[[/DOCUMENT_CARD]]".length).trimStart();
+
           const ytAttachIds = attachments.filter((a) => a.kind === "youtube").map((a) => a.name);
           const linkVideoId =
             ytCard?.video_id ?? pinned?.videoId ?? (ytAttachIds.length === 1 ? ytAttachIds[0] : null);
-          const rendered = m.role === "assistant" ? linkifyTimestamps(afterCard, linkVideoId) : afterCard;
+          let rendered = m.role === "assistant" ? linkifyTimestamps(afterCard, linkVideoId) : afterCard;
+          
+          // Clean up attachment strings from user messages for UI
+          if (m.role === "user") {
+            // Convert images to markdown
+            rendered = rendered.replace(/\[Image attached: (.*?) — (https?:\/\/[^\]]+)\]/g, "![Attached Image: $1]($2)");
+            // Strip out document attachments (they have their own DocumentCard)
+            rendered = rendered.replace(/\[[A-Z]+ attached: (.*?) — (https?:\/\/[^\]]+)\]/g, "");
+            rendered = rendered.trim();
+          }
+
           const useNotebook =
             studyEnabled &&
             m.role === "assistant" &&
             !ytCard &&
+            !docCard &&
             !(isLast && streamingAssistant) &&
             !!rendered.trim();
 
@@ -673,7 +750,7 @@ function ChatPage() {
             const prev = messages[i - 1];
             const userQ =
               prev?.role === "user"
-                ? prev.parts.map((p) => (p.type === "text" ? p.text : "")).join("")
+                ? (prev.parts?.map((p) => (p.type === "text" ? p.text : "")).join("") ?? (prev as any).content ?? "")
                 : "";
             return (
               <div key={m.id} className="px-1">
@@ -695,20 +772,54 @@ function ChatPage() {
           return (
             <Bubble key={m.id} role={m.role}
                     time={(m as any).createdAt ? new Date((m as any).createdAt) : (isLast ? new Date() : undefined)}>
-              {ytCard && (
-                <YouTubeRichCard
-                  video={ytCard}
-                  onOpenTimeline={(id) => setTimelineFor(id)}
-                />
-              )}
-              {rendered && (
-                <SanaMarkdown
-                  content={rendered + (isLast && streamingAssistant ? "~~▋~~" : "")}
-                  onChip={m.role === "assistant" ? (c) => send(c) : undefined}
-                  busy={busy}
-                  isLastAssistant={m.role === "assistant" && isLast}
-                  streaming={m.role === "assistant" && isLast && streamingAssistant}
-                />
+              {m.role === "assistant" && (ytCard || docCard) ? (
+                <div className="flex gap-4">
+                  <div className="shrink-0 mt-1 h-8 w-8 rounded-full border border-primary/20 bg-gradient-to-tr from-primary to-lavender flex items-center justify-center text-white overflow-hidden shadow-sm">
+                    {profile?.avatarUrl ? <img src={resolvedAvatarUrl} alt="" className="h-full w-full object-cover" /> : <Sparkles className="h-4 w-4" />}
+                  </div>
+                  <div className="min-w-0 flex-1 pt-1.5 pb-2">
+                    {ytCard && <YouTubeRichCard video={ytCard} onOpenTimeline={(id) => setTimelineFor(id)} />}
+                    {docCard && (
+                      <div className="mb-4 overflow-hidden rounded-2xl border border-border bg-card shadow-card w-full max-w-sm">
+                        <div className="flex items-center gap-3 border-b border-border/50 bg-muted/30 px-4 py-3">
+                          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                            <FileText className="h-5 w-5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-bold">{docCard.name}</div>
+                            <div className="mt-0.5 flex gap-2 text-xs text-muted-foreground font-medium">
+                              <span className="uppercase tracking-wider">{docCard.kind}</span>
+                              {docCard.size && <span>•</span>}
+                              {docCard.size && <span>{(docCard.size / 1024 / 1024).toFixed(1)} MB</span>}
+                            </div>
+                          </div>
+                          <a href={docCard.url} target="_blank" rel="noreferrer" className="shrink-0 rounded-full bg-primary/10 p-2 text-primary hover:bg-primary hover:text-white transition">
+                            <Maximize className="h-4 w-4" />
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                    {rendered && (
+                      <SanaMarkdown
+                        content={rendered + (isLast && streamingAssistant ? "~~▋~~" : "")}
+                        onChip={m.role === "assistant" ? (c) => send(c) : undefined}
+                        busy={busy}
+                        isLastAssistant={m.role === "assistant" && isLast}
+                        streaming={m.role === "assistant" && isLast && streamingAssistant}
+                      />
+                    )}
+                  </div>
+                </div>
+              ) : (
+                rendered && (
+                  <SanaMarkdown
+                    content={rendered + (isLast && streamingAssistant ? "~~▋~~" : "")}
+                    onChip={m.role === "assistant" ? (c) => send(c) : undefined}
+                    busy={busy}
+                    isLastAssistant={m.role === "assistant" && isLast}
+                    streaming={m.role === "assistant" && isLast && streamingAssistant}
+                  />
+                )
               )}
               {m.role === "assistant" && classroomSources[m.id]?.length ? (
                 <ClassroomCitations sources={classroomSources[m.id]} />
@@ -734,17 +845,6 @@ function ChatPage() {
 
       {/* Sticky composer bar */}
       <div ref={composerRef} className="sticky bottom-0 z-20 shrink-0">
-        {/* Quick actions strip (visible once conversation started) */}
-        {!empty && (
-          <div className="no-scrollbar shrink-0 overflow-x-auto border-t border-border/60 bg-background/95 px-4 py-2.5 backdrop-blur-xl">
-            <div className="flex min-w-max gap-2">
-              <QuickTile icon={<span className="text-base">🍅</span>} label="Start Pomodoro" sub="Focus session" to="/pomodoro" />
-              <QuickTile icon={<Phone className="h-4 w-4 text-blue" />} label="Schedule AI Call" sub="Get accountable" to="/ai-calls" />
-              <QuickTile icon={genBusy === "notes" ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <BookOpen className="h-4 w-4 text-primary" />} label="Generate Notes" sub={genBusy === "notes" ? "Generating…" : "From this chat"} onClick={() => handleGenerate("notes")} disabled={genBusy === "quiz"} busy={genBusy === "notes"} />
-              <QuickTile icon={genBusy === "quiz" ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <HelpCircle className="h-4 w-4 text-primary" />} label="Take Quiz" sub={genBusy === "quiz" ? "Preparing…" : "Test knowledge"} onClick={() => handleGenerate("quiz")} disabled={genBusy === "notes"} busy={genBusy === "quiz"} />
-            </div>
-          </div>
-        )}
 
         {/* Classroom retrieval filter */}
         {classroomCourses.length > 0 && (
@@ -1413,47 +1513,60 @@ function ClassroomFilterBar({
   selected: string[];
   onChange: (ids: string[]) => void;
 }) {
+  const [isVisible, setIsVisible] = useState(true);
+
+  if (!isVisible) return null;
+
   const toggle = (id: string) => {
     onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
   };
   const isAll = selected.length === 0;
   return (
-    <div className="no-scrollbar shrink-0 overflow-x-auto border-t border-border/60 bg-background/95 px-4 py-2 backdrop-blur-xl">
-      <div className="flex min-w-max items-center gap-2">
-        <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground">
-          <GraduationCap className="h-3 w-3" /> Ask about
-        </span>
-        <button
-          type="button"
-          onClick={() => onChange([])}
-          className={cn(
-            "rounded-full border px-2.5 py-1 text-[10px] font-bold transition",
-            isAll
-              ? "border-warning/40 bg-warning/15 text-warning"
-              : "border-border bg-card text-muted-foreground hover:border-warning/30",
-          )}
-        >
-          All courses
-        </button>
-        {courses.map((c) => {
-          const active = selected.includes(c.google_course_id);
-          return (
-            <button
-              key={c.google_course_id}
-              type="button"
-              onClick={() => toggle(c.google_course_id)}
-              className={cn(
-                "max-w-[160px] truncate rounded-full border px-2.5 py-1 text-[10px] font-bold transition",
-                active
-                  ? "border-warning/40 bg-warning/15 text-warning"
-                  : "border-border bg-card text-muted-foreground hover:border-warning/30",
-              )}
-            >
-              {c.name}
-            </button>
-          );
-        })}
+    <div className="shrink-0 flex items-center border-t border-border/60 bg-background/95 pr-2 backdrop-blur-xl">
+      <div className="no-scrollbar flex-1 overflow-x-auto px-4 py-2">
+        <div className="flex min-w-max items-center gap-2">
+          <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+            <GraduationCap className="h-3 w-3" /> Ask about
+          </span>
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            className={cn(
+              "rounded-full border px-2.5 py-1 text-[10px] font-bold transition",
+              isAll
+                ? "border-warning/40 bg-warning/15 text-warning"
+                : "border-border bg-card text-muted-foreground hover:border-warning/30",
+            )}
+          >
+            All courses
+          </button>
+          {courses.map((c) => {
+            const active = selected.includes(c.google_course_id);
+            return (
+              <button
+                key={c.google_course_id}
+                type="button"
+                onClick={() => toggle(c.google_course_id)}
+                className={cn(
+                  "max-w-[160px] truncate rounded-full border px-2.5 py-1 text-[10px] font-bold transition",
+                  active
+                    ? "border-warning/40 bg-warning/15 text-warning"
+                    : "border-border bg-card text-muted-foreground hover:border-warning/30",
+                )}
+              >
+                {c.name}
+              </button>
+            );
+          })}
+        </div>
       </div>
+      <button
+        onClick={() => setIsVisible(false)}
+        className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors mr-1"
+        title="Dismiss"
+      >
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 }
