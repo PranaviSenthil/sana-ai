@@ -29,23 +29,39 @@ export const Route = createFileRoute("/api/public/classroom/callback")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        console.log("[Google OAuth] Callback received");
         const url = new URL(request.url);
         const origin = url.origin;
         const code = url.searchParams.get("code");
         const state = url.searchParams.get("state");
         const oauthError = url.searchParams.get("error");
-        if (oauthError) return errorRedirect(origin, oauthError);
-        if (!code || !state) return errorRedirect(origin, "missing_params");
+        if (oauthError) {
+          console.error(`[Google OAuth] Callback returned OAuth error: ${oauthError}`);
+          return errorRedirect(origin, oauthError);
+        }
+        if (!code || !state) {
+          console.error("[Google OAuth] Callback missing code or state parameters");
+          return errorRedirect(origin, "missing_params");
+        }
 
         const payload = verifyState(state);
-        if (!payload) return errorRedirect(origin, "invalid_state");
+        if (!payload) {
+          console.error("[Google OAuth] State verification failed or state expired");
+          return errorRedirect(origin, "invalid_state");
+        }
+
+        console.log("[Google OAuth] Authorization code received: YES");
 
         const clientId = process.env.GOOGLE_CLASSROOM_CLIENT_ID;
         const clientSecret = process.env.GOOGLE_CLASSROOM_CLIENT_SECRET;
-        if (!clientId || !clientSecret) return errorRedirect(origin, "server_misconfigured");
+        if (!clientId || !clientSecret) {
+          console.error("[Google OAuth] Server misconfigured: Client ID or Secret missing");
+          return errorRedirect(origin, "server_misconfigured");
+        }
 
         // Exchange code for tokens.
         const redirectUri = `${payload.origin || origin}/api/public/classroom/callback`;
+        console.log("[Google OAuth] Token exchange started");
         const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -60,7 +76,12 @@ export const Route = createFileRoute("/api/public/classroom/callback")({
         if (!tokenRes.ok) {
           const text = await tokenRes.text();
           console.error("[classroom callback] token exchange failed", tokenRes.status, text);
-          return errorRedirect(origin, "token_exchange_failed");
+          let errDesc = "token_exchange_failed";
+          try {
+            const errObj = JSON.parse(text);
+            errDesc = errObj.error_description || errObj.error || "token_exchange_failed";
+          } catch {}
+          return errorRedirect(origin, errDesc);
         }
         const tokens = (await tokenRes.json()) as {
           access_token: string;
@@ -69,6 +90,9 @@ export const Route = createFileRoute("/api/public/classroom/callback")({
           scope?: string;
           id_token?: string;
         };
+
+        console.log("[Google OAuth] Token exchange successful");
+        console.log("[Google OAuth] Refresh token received in response:", tokens.refresh_token ? "YES" : "NO");
 
         // Fetch user profile.
         let email: string | null = null;
@@ -93,9 +117,20 @@ export const Route = createFileRoute("/api/public/classroom/callback")({
         // Persist connection (upsert). Uses service-role client to bypass RLS in this
         // public route; user is authenticated by our signed state.
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+        // Retrieve existing connection to preserve refresh token if Google does not supply one on re-auth
+        const { data: existingConn } = await supabaseAdmin
+          .from("classroom_connections")
+          .select("refresh_token")
+          .eq("user_id", payload.uid)
+          .maybeSingle();
+
         const expiresAt = tokens.expires_in
           ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
           : null;
+
+        const refreshToken = tokens.refresh_token || existingConn?.refresh_token || null;
+
         const { error } = await supabaseAdmin.from("classroom_connections").upsert(
           {
             user_id: payload.uid,
@@ -104,7 +139,7 @@ export const Route = createFileRoute("/api/public/classroom/callback")({
             google_name: name,
             google_picture: picture,
             access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token ?? null,
+            refresh_token: refreshToken,
             token_expires_at: expiresAt,
             scope: tokens.scope ?? null,
             status: "connected",
@@ -116,6 +151,9 @@ export const Route = createFileRoute("/api/public/classroom/callback")({
           console.error("[classroom callback] upsert failed", error);
           return errorRedirect(origin, "save_failed");
         }
+
+        console.log("[Google OAuth] Connection persisted, refresh token stored securely");
+        console.log("[Google OAuth] Google connection successfully initialized");
 
         return new Response(null, {
           status: 302,

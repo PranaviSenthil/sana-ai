@@ -12,6 +12,8 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useWebCallReminder } from "@/hooks/use-web-call-reminder";
+import { WebCallOverlay } from "@/components/voice/WebCallOverlay";
 
 function NotFoundComponent() {
   return (
@@ -77,6 +79,22 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+function WebCallReminderWrapper() {
+  const { queryClient } = Route.useRouteContext();
+  const { isOverlayOpen, activeCallConfig, closeWebCall } = useWebCallReminder();
+
+  return (
+    <WebCallOverlay
+      isOpen={isOverlayOpen}
+      config={activeCallConfig}
+      onClose={closeWebCall}
+      onRescheduled={() => {
+        queryClient.invalidateQueries({ queryKey: ["reminders"] });
+      }}
+    />
+  );
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
@@ -94,6 +112,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <Outlet />
       <Toaster position="top-center" richColors />
+      <WebCallReminderWrapper />
     </QueryClientProvider>
   );
 }

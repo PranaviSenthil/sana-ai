@@ -36,17 +36,18 @@ ${videoContext}
           if (classroomContext === "__NO_MATCHES__") {
             system += `
 
-A background search over the user's Google Classroom returned no relevant excerpts for their last message. IMPORTANT: Do not mention this search or apologize for not finding classroom content unless the user specifically asked about their classes, assignments, grades, or course documents. For general questions, greetings, or casual chat, just answer normally using your own knowledge.`;
+A background search over the user's Google Classroom returned no relevant excerpts.
+IMPORTANT: Since the user is asking about specific course documents, syllabi, module/unit names, or class materials, you MUST state clearly: "I couldn't find the requested document or syllabus in your synchronized Google Classroom materials. Please make sure your Google Classroom is connected and synced." Do NOT guess, simulate, or generate syllabus structures, module names, or assignments using your own general knowledge.`;
           } else if (classroomContext) {
             system += `
 
 You have retrieved excerpts from the student's Google Classroom (assignments, announcements, materials, and course documents). These are your ONLY authoritative source for anything about the student's specific classes, homework, deadlines, teacher instructions, or lecture content.
 
 Grounding rules — follow strictly:
-1. Only claim classroom-specific facts that are directly supported by the excerpts below. Do not invent titles, dates, numbers, names, or instructions.
+1. Only claim classroom-specific facts that are directly supported by the excerpts below. Do NOT invent, rename, simplify, or modify official titles, module names, or syllabus units. Preserve the exact spelling.
 2. Cite every classroom claim inline as a markdown link using the exact title and URL provided, e.g. [Unit 5 Notes](https://docs.google.com/...). If a source has no URL, cite the title in bold.
 3. If the excerpts partially answer the question, answer only the supported part and say clearly what is missing.
-4. If the excerpts are irrelevant to the question, say so explicitly ("I couldn't find this in your classroom materials") before offering general knowledge, and label that general knowledge as such.
+4. If the excerpts do not contain the actual syllabus module names, state clearly that you found the document but the modules are not in the retrieved sections. Do NOT guess or substitute module names using general knowledge.
 5. Never mix general knowledge with a classroom citation.
 
 --- CLASSROOM EXCERPTS ---

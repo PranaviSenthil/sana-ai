@@ -290,9 +290,9 @@ export function GroupSettingsPanel({ group, members, onClose }: GroupSettingsPan
           {isOwner && (
             <button 
               onClick={() => setShowInviteModal(true)}
-              className="w-full mt-5 flex items-center justify-center gap-2 rounded-2xl bg-indigo-50 border border-indigo-100 py-3.5 text-[14px] font-bold text-indigo-600 hover:bg-indigo-100 transition-colors shadow-sm"
+              className="w-full mt-5 flex items-center justify-center gap-2 rounded-2xl bg-indigo-50 border border-indigo-100 py-3.5 text-[14px] font-bold text-indigo-600 hover:bg-indigo-100 transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
             >
-              <SearchIcon className="h-4 w-4" /> 
+              <SearchIcon className="h-4 w-4" aria-hidden="true" /> 
               <span>Find & Invite New Members</span>
             </button>
           )}
@@ -303,18 +303,18 @@ export function GroupSettingsPanel({ group, members, onClose }: GroupSettingsPan
           <button 
             onClick={handleLeaveGroup}
             disabled={removeMemberMutation.isPending}
-            className="w-full flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50/50 py-4 text-[15px] font-bold text-red-600 hover:bg-red-50 transition-colors"
+            className="w-full flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50/50 py-4 text-[15px] font-bold text-red-600 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 transition-colors"
           >
-            <LogOut className="h-5 w-5" /> Leave Group
+            <LogOut className="h-5 w-5" aria-hidden="true" /> Leave Group
           </button>
           
           {isOwner && (
             <button 
               onClick={handleDeleteGroup}
               disabled={deleteGroupMutation.isPending}
-              className="w-full flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50/50 py-4 text-[15px] font-bold text-red-600 hover:bg-red-50 transition-colors"
+              className="w-full flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50/50 py-4 text-[15px] font-bold text-red-600 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 transition-colors"
             >
-              <Trash2 className="h-5 w-5" /> Delete Group
+              <Trash2 className="h-5 w-5" aria-hidden="true" /> Delete Group
             </button>
           )}
         </div>

@@ -5,71 +5,9 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
  * Google Classroom sync engine.
  *
  * Each step is its own server function so the UI can render animated
- * per-step progress. All steps share getValidAccessToken() which
- * transparently refreshes the OAuth token when expired.
+ * per-step progress. All steps load getValidAccessToken() from the
+ * centralized server-only auth service.
  */
-
-type ConnectionRow = {
-  access_token: string;
-  refresh_token: string | null;
-  token_expires_at: string | null;
-};
-
-async function loadConn(supabase: any, userId: string): Promise<ConnectionRow> {
-  const { data, error } = await supabase
-    .from("classroom_connections")
-    .select("access_token, refresh_token, token_expires_at")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) throw new Error("Not connected to Google Classroom");
-  return data as ConnectionRow;
-}
-
-async function refreshAccessToken(refreshToken: string): Promise<{
-  access_token: string;
-  expires_in: number;
-}> {
-  const clientId = process.env.GOOGLE_CLASSROOM_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLASSROOM_CLIENT_SECRET;
-  if (!clientId || !clientSecret) throw new Error("Google OAuth env missing");
-
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: "refresh_token",
-    }),
-  });
-  if (!res.ok) throw new Error(`Token refresh failed: ${await res.text()}`);
-  return res.json();
-}
-
-async function getValidAccessToken(supabase: any, userId: string): Promise<string> {
-  const conn = await loadConn(supabase, userId);
-  const expiresAt = conn.token_expires_at ? new Date(conn.token_expires_at).getTime() : 0;
-  const isExpired = !expiresAt || expiresAt - Date.now() < 60_000;
-
-  if (!isExpired) return conn.access_token;
-  if (!conn.refresh_token) {
-    // Expired without a refresh token — the user must reconnect.
-    throw new Error("Google session expired. Please reconnect.");
-  }
-
-  const refreshed = await refreshAccessToken(conn.refresh_token);
-  const newExpires = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
-  await supabase
-    .from("classroom_connections")
-    .update({
-      access_token: refreshed.access_token,
-      token_expires_at: newExpires,
-    })
-    .eq("user_id", userId);
-  return refreshed.access_token;
-}
 
 async function gcFetch<T>(token: string, path: string): Promise<T> {
   const res = await fetch(`https://classroom.googleapis.com${path}`, {
@@ -121,12 +59,21 @@ type GCourse = {
 export const syncClassroomCourses = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    const { getValidAccessToken } = await import("@/lib/classroom-auth.server");
     const token = await getValidAccessToken(context.supabase, context.userId);
+
+    console.log(`\nGoogle Classroom Request Started`);
+    console.log(`User ID: ${context.userId}`);
+
     const courses = await paginated<GCourse>(
       token,
       "/v1/courses?studentId=me&courseStates=ACTIVE&courseStates=ARCHIVED",
       "courses",
     );
+    
+    console.log(`Courses Found: ${courses.length}`);
+    console.log(`Google Classroom Request Completed`);
+
     if (courses.length) {
       const rows = courses.map((c) => ({
         user_id: context.userId,
@@ -180,6 +127,7 @@ export const syncClassroomCoursework = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: { courseIds: string[] }) => data)
   .handler(async ({ data, context }) => {
+    const { getValidAccessToken } = await import("@/lib/classroom-auth.server");
     const token = await getValidAccessToken(context.supabase, context.userId);
     let total = 0;
     for (const courseId of data.courseIds) {
@@ -191,7 +139,7 @@ export const syncClassroomCoursework = createServerFn({ method: "POST" })
           "courseWork",
         );
       } catch {
-        continue; // course may be inaccessible; skip
+        continue;
       }
       if (!items.length) continue;
       const rows = items.map((cw) => ({
@@ -215,6 +163,7 @@ export const syncClassroomCoursework = createServerFn({ method: "POST" })
       if (error) throw error;
       total += rows.length;
     }
+    console.log(`Coursework Found: ${total}`);
     return { count: total };
   });
 
@@ -235,6 +184,7 @@ export const syncClassroomAnnouncements = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: { courseIds: string[] }) => data)
   .handler(async ({ data, context }) => {
+    const { getValidAccessToken } = await import("@/lib/classroom-auth.server");
     const token = await getValidAccessToken(context.supabase, context.userId);
     let total = 0;
     for (const courseId of data.courseIds) {
@@ -266,6 +216,7 @@ export const syncClassroomAnnouncements = createServerFn({ method: "POST" })
       if (error) throw error;
       total += rows.length;
     }
+    console.log(`Announcements Found: ${total}`);
     return { count: total };
   });
 
@@ -287,6 +238,7 @@ export const syncClassroomMaterials = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: { courseIds: string[] }) => data)
   .handler(async ({ data, context }) => {
+    const { getValidAccessToken } = await import("@/lib/classroom-auth.server");
     const token = await getValidAccessToken(context.supabase, context.userId);
     let total = 0;
     for (const courseId of data.courseIds) {
@@ -319,6 +271,7 @@ export const syncClassroomMaterials = createServerFn({ method: "POST" })
       if (error) throw error;
       total += rows.length;
     }
+    console.log(`Materials Found: ${total}`);
     return { count: total };
   });
 

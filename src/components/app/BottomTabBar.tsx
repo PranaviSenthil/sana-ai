@@ -25,7 +25,7 @@ export function BottomTabBar() {
               <Link
                 to={to}
                 className={cn(
-                  "flex flex-col items-center gap-1 rounded-xl py-1.5 text-[11px] font-medium transition-colors",
+                  "flex flex-col items-center gap-1 rounded-xl py-1.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2",
                   active ? "text-primary" : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -35,7 +35,7 @@ export function BottomTabBar() {
                     active && "bg-primary/10",
                   )}
                 >
-                  <Icon className={cn("h-5 w-5", active && "fill-primary/15")} strokeWidth={active ? 2.4 : 2} />
+                  <Icon className={cn("h-5 w-5", active && "fill-primary/15")} strokeWidth={active ? 2.4 : 2} aria-hidden="true" />
                 </span>
                 <span className="text-center leading-tight px-0.5">{label}</span>
               </Link>
