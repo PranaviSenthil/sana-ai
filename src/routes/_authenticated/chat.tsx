@@ -592,6 +592,7 @@ function ChatPage() {
         }
       } catch (e) {
         console.warn("[classroom] search failed", e);
+        pendingClassroomContextRef.current = "__NO_MATCHES__";
       }
     }
 

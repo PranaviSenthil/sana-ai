@@ -59,6 +59,7 @@ export function ClassroomSyncProgress({
 
   const [steps, setSteps] = useState<StepState[]>(INITIAL);
   const [done, setDone] = useState(false);
+  const [errorDetails, setErrorDetails] = useState<{ step: string; message: string } | null>(null);
   const startedRef = useRef(false);
 
   useEffect(() => {
@@ -66,6 +67,7 @@ export function ClassroomSyncProgress({
       startedRef.current = false;
       setSteps(INITIAL);
       setDone(false);
+      setErrorDetails(null);
       return;
     }
     if (startedRef.current) return;
@@ -124,6 +126,9 @@ export function ClassroomSyncProgress({
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Sync failed";
         hadError = msg;
+        const activeStep = steps.find((s) => s.status === "running");
+        const stepName = activeStep ? activeStep.label : "Google Classroom Sync";
+        setErrorDetails({ step: stepName, message: msg });
         setSteps((s) =>
           s.map((st) =>
             st.status === "running" ? { ...st, status: "error", error: msg } : st,
@@ -155,7 +160,7 @@ export function ClassroomSyncProgress({
       {open && (
         <>
           <motion.div
-            className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -165,7 +170,7 @@ export function ClassroomSyncProgress({
             aria-modal="true"
             aria-labelledby="classroom-sync-title"
             className={cn(
-              "fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+              "fixed z-[111] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
               "w-[min(420px,calc(100vw-24px))] rounded-3xl bg-background border border-border/60 shadow-2xl overflow-hidden",
             )}
             initial={{ opacity: 0, y: 24, scale: 0.96 }}
@@ -188,12 +193,33 @@ export function ClassroomSyncProgress({
               ))}
             </ol>
 
+            {errorDetails && (
+              <div className="mx-4 my-2 p-3.5 rounded-2xl bg-destructive/10 border border-destructive/20 text-left">
+                <div className="text-xs font-black uppercase text-destructive tracking-wider flex items-center gap-1.5">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>Google Classroom Sync Failed</span>
+                </div>
+                <div className="mt-2 text-xs text-foreground font-semibold">
+                  <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Step</span>
+                  <span>{errorDetails.step}</span>
+                </div>
+                <div className="mt-2 text-xs text-foreground break-words font-mono bg-destructive/5 border border-destructive/10 p-2 rounded-xl">
+                  <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider font-sans mb-0.5">Error</span>
+                  <span>{errorDetails.message}</span>
+                </div>
+                <div className="mt-3 text-xs font-bold text-destructive">
+                  <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider font-sans mb-1 text-slate-500">Suggested Action</span>
+                  <span>Please reconnect your Google Account and try again.</span>
+                </div>
+              </div>
+            )}
+
             <div className="p-4 pt-2 flex justify-end">
               <button
                 onClick={onClose}
                 disabled={!done}
                 className={cn(
-                  "rounded-2xl px-4 py-2 text-sm font-medium transition",
+                  "rounded-2xl px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
                   done
                     ? "bg-foreground text-background hover:opacity-90 active:scale-[0.99]"
                     : "bg-muted text-muted-foreground cursor-not-allowed",
@@ -233,7 +259,7 @@ function StepRow({ step, index }: { step: StepState; index: number }) {
           step.status === "pending" && "bg-muted text-muted-foreground",
         )}
       >
-        <Icon className="h-4 w-4" />
+        <Icon className="h-4 w-4" aria-hidden="true" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium truncate">{step.label}</div>
@@ -262,9 +288,9 @@ function StepRow({ step, index }: { step: StepState; index: number }) {
         )}
       </div>
       <div className="shrink-0">
-        {step.status === "running" && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
-        {step.status === "done" && <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
-        {step.status === "error" && <AlertCircle className="h-4 w-4 text-destructive" />}
+        {step.status === "running" && <Loader2 className="h-4 w-4 animate-spin text-primary" aria-hidden="true" />}
+        {step.status === "done" && <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />}
+        {step.status === "error" && <AlertCircle className="h-4 w-4 text-destructive" aria-hidden="true" />}
       </div>
     </motion.li>
   );
