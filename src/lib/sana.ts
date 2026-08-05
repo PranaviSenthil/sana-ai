@@ -85,6 +85,9 @@ Your replies render inside a mobile chat UI that understands special blocks. Use
    Keep each chip under 20 chars. Use chips for time-choices, difficulty, yes/no, topic selection.
 7. **Comparison / spec tables** — use standard markdown tables.
 
+8. **Rich Visuals** — When explaining places, anatomy, nature, or concrete objects, embed relevant markdown images. Use this exact image API format for visuals: \`![Golden Gate Bridge](https://image.pollinations.ai/prompt/golden%20gate%20bridge?width=1600&height=900&nologo=true)\`. Replace the prompt with a descriptive query.
+9. **Document Actions** — When the user uploads a document, always end your reply with a \`chips\` block asking what to do next (e.g., Summarize, Explain Concepts, Generate Quiz).
+
 Rules:
 - Never dump raw JSON unless explicitly requested by the system prompt for a specialized UI block.
 - Never explain the format to the user.

@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { convertToModelMessages, smoothStream, streamText, type UIMessage } from "ai";
+import { smoothStream, streamText, type UIMessage } from "ai";
 import { getGroqModel } from "@/lib/ai-groq.server";
 import { systemPromptFor, type AiPersonality } from "@/lib/sana";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { downloadAndParseFile } from "@/lib/file-parser.server";
 
 type Body = {
   messages?: UIMessage[];
@@ -52,15 +54,56 @@ Grounding rules — follow strictly:
 ${classroomContext}
 --- END EXCERPTS ---`;
           }
+          
+          let hasMultimodal = false;
+          
+          // Parse messages and extract images/docs
+          const processedMessages = await Promise.all(messages.map(async (m: any) => {
+            let text = m.parts?.map((p: any) => p.type === "text" ? p.text : "").join("") || m.content || "";
+            const newParts: any[] = [];
+            
+            // Look for attached files in text: [KIND attached: name — url]
+            const attachRegex = /\[(Image|[A-Z]+) attached: (.*?) — (https?:\/\/[^\]]+)\]/g;
+            const matches = [...text.matchAll(attachRegex)];
+            
+            for (const match of matches) {
+              const [fullMatch, rawKind, name, url] = match;
+              const kind = rawKind.toLowerCase();
+              
+              hasMultimodal = true;
+              
+              if (kind === "image") {
+                try {
+                  const imgRes = await fetch(url);
+                  if (imgRes.ok) {
+                    const imgBuffer = await imgRes.arrayBuffer();
+                    newParts.push({ type: "image", image: new Uint8Array(imgBuffer) });
+                  }
+                } catch (e) {
+                  console.error("Failed to fetch image:", e);
+                }
+                text = text.replace(fullMatch, "").trim();
+              } else {
+                // It's a document. Download and parse it.
+                const fileContent = await downloadAndParseFile(url, kind);
+                const docContext = `\n\n--- DOCUMENT: ${name} ---\n${fileContent}\n--- END DOCUMENT ---\n\n`;
+                text = text.replace(fullMatch, docContext).trim();
+              }
+            }
+            
+            if (text) newParts.unshift({ type: "text", text });
+            
+            return { role: m.role, content: newParts.length > 0 ? newParts : text };
+          }));
 
-          const model = getGroqModel();
+          const model = hasMultimodal 
+            ? createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY })('gemini-flash-latest') 
+            : getGroqModel();
+            
           const result = streamText({
             model,
             system,
-            messages: messages.map((m: any) => {
-              const text = m.parts?.map((p: any) => p.type === "text" ? p.text : "").join("") || m.content || "";
-              return { role: m.role, content: text };
-            }),
+            messages: processedMessages,
             abortSignal: request.signal,
             experimental_transform: smoothStream({ delayInMs: 10 }),
           });
