@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { streamObject } from "ai";
 import { NotebookDocSchema } from "@/lib/study-notes.schema";
 import { parseMarkdownToNotebookDoc } from "@/lib/study-notes.parser";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { getGroqModel } from "@/lib/ai-groq.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
@@ -35,27 +34,15 @@ HARD RULES:
 - Always include at least one section block.
 - Return valid blocks matching the schema. Never return raw markdown as a paragraph.`;
 
-function getModelConfig() {
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (geminiKey && geminiKey.startsWith("AIza")) {
-    const google = createGoogleGenerativeAI({
-      apiKey: geminiKey,
-    });
-    return { model: google("gemini-2.0-flash"), mode: "auto" as const };
-  }
-  return { model: getGroqModel(), mode: "tool" as const };
-}
-
 async function handle(request: Request) {
   try {
     const data = await request.json();
     console.log("[Study Notes] Starting generation for message:", data.messageId, "User:", data.userId);
     
-    const { model, mode } = getModelConfig();
+    const model = getGroqModel();
 
     const result = await streamObject({
       model,
-      mode,
       system: SYSTEM,
       prompt: `USER QUESTION:\n${data.userQuestion}\n\nASSISTANT REPLY (markdown to restructure — preserve facts, strip markdown, reorder for learning):\n${data.assistantMarkdown}`,
       schema: NotebookDocSchema,
