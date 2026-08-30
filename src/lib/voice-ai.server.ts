@@ -1,8 +1,5 @@
 // LLM helpers for voice calls: turn generation + post-call summarization.
-// Uses Lovable AI Gateway (Gemini) via OpenAI-compatible chat completions.
-
-const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-3-flash-preview";
+// Uses Groq for low-latency voice turn generation.
 
 type ChatMsg = { role: "system" | "user" | "assistant"; content: string };
 

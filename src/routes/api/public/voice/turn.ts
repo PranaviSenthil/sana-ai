@@ -1,5 +1,5 @@
 // Twilio webhook: called after each <Gather input="speech"> recognition.
-// Receives SpeechResult, feeds Gemini, returns next TwiML.
+// Receives SpeechResult, feeds Groq LLM, returns next TwiML.
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { generateTurn, voiceSystemPrompt, parseControlMarkers, type VoicePersona } from "@/lib/voice-ai.server";
