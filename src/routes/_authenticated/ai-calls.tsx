@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -35,6 +36,15 @@ function AICallsPage() {
     queryFn: () => list() as never,
   });
 
+  // Auto-refresh when Sana reschedules a reminder during a call
+  useEffect(() => {
+    const onRescheduled = () => {
+      qc.invalidateQueries({ queryKey: ["reminders"] });
+    };
+    window.addEventListener("reminder-rescheduled", onRescheduled);
+    return () => window.removeEventListener("reminder-rescheduled", onRescheduled);
+  }, [qc]);
+
   const deleteMut = useMutation({
     mutationFn: (id: string) => del({ data: { id } }) as unknown as Promise<unknown>,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["reminders"] }); toast.success("Call cancelled"); },
@@ -56,6 +66,7 @@ function AICallsPage() {
 
   const handleTestWebCall = () => {
     triggerIncomingWebCall({
+      reminderId: upcoming[0]?.id,
       reminderTitle: upcoming[0]?.title || "DBMS Functions & Modules Revision",
       topic: "Python & DBMS Architecture",
       userName: "",

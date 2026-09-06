@@ -22,12 +22,28 @@ export function triggerIncomingWebCall(config: WebCallConfig) {
   listeners.forEach((fn) => fn(config));
 }
 
+// Module-level persistent timer registry (survives React hook re-renders & route changes)
+const persistentCallTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const triggeredReminderIds = new Set<string>();
+
+function registerPersistentCall(key: string, delayMs: number, config: WebCallConfig) {
+  if (persistentCallTimers.has(key)) {
+    clearTimeout(persistentCallTimers.get(key));
+  }
+  const timer = setTimeout(() => {
+    persistentCallTimers.delete(key);
+    triggeredReminderIds.add(key);
+    triggerIncomingWebCall(config);
+  }, Math.max(500, delayMs));
+  persistentCallTimers.set(key, timer);
+}
+
 export function useWebCallReminder() {
   const [activeCallConfig, setActiveCallConfig] = useState<WebCallConfig | null>(null);
   const [isOverlayOpen, setIsOverlayOpen] = useState(false);
 
   const list = useServerFn(listReminders);
-  const { data: reminders } = useQuery<Reminder[]>({
+  const { data: reminders, refetch } = useQuery<Reminder[]>({
     queryKey: ["reminders"],
     queryFn: () => list() as unknown as Promise<Reminder[]>,
   });
@@ -44,48 +60,47 @@ export function useWebCallReminder() {
     };
   }, []);
 
-  // Listen for client-side test call reschedules
+  // Listen for client-side test call reschedules and database updates
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const timers: ReturnType<typeof setTimeout>[] = [];
 
-    const handleRescheduleTest = (e: Event) => {
+    const handleRescheduleEvent = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (!detail) return;
-      const { minutes, config: testConfig } = detail;
-      const delay = minutes * 60_000;
+      const { minutes, config: testConfig, id } = detail;
+      const delay = (Number(minutes) || 5) * 60_000;
+      const key = id || testConfig?.reminderId || `reschedule-${Date.now()}`;
 
-      const timer = setTimeout(() => {
-        triggerIncomingWebCall({
-          ...testConfig,
-          reminderTitle: testConfig?.reminderTitle || "Rescheduled Test Session",
-        });
-      }, delay);
-      timers.push(timer);
+      registerPersistentCall(key, delay, {
+        ...testConfig,
+        reminderId: id || testConfig?.reminderId,
+        reminderTitle: testConfig?.reminderTitle || "Rescheduled Study Session",
+      });
+
+      // Refetch reminders query so UI immediately has latest state
+      refetch();
     };
 
-    window.addEventListener("reschedule-test-call", handleRescheduleTest);
+    window.addEventListener("reschedule-test-call", handleRescheduleEvent);
+    window.addEventListener("reminder-rescheduled", handleRescheduleEvent);
     return () => {
-      window.removeEventListener("reschedule-test-call", handleRescheduleTest);
-      timers.forEach(clearTimeout);
+      window.removeEventListener("reschedule-test-call", handleRescheduleEvent);
+      window.removeEventListener("reminder-rescheduled", handleRescheduleEvent);
     };
-  }, []);
+  }, [refetch]);
 
-  // Monitor scheduled reminders and open incoming call modal when due
+  // Monitor scheduled reminders from Supabase and register persistent triggers
   useEffect(() => {
     if (!reminders || typeof window === "undefined") return;
-
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    const firedSet = new Set<string>();
 
     for (const r of reminders) {
       if (r.status !== "scheduled") continue;
       const fireAt = new Date(r.scheduled_at).getTime();
       const delay = fireAt - Date.now();
 
-      // Trigger if due now or due within next 24 hours
-      if (delay <= 0 && delay > -60_000 && !firedSet.has(r.id)) {
-        firedSet.add(r.id);
+      // Trigger if due now or due within past 60s
+      if (delay <= 0 && delay > -60_000 && !triggeredReminderIds.has(r.id)) {
+        triggeredReminderIds.add(r.id);
         setActiveCallConfig({
           reminderId: r.id,
           reminderTitle: r.title,
@@ -93,23 +108,15 @@ export function useWebCallReminder() {
           durationMinutes: r.duration_minutes,
         });
         setIsOverlayOpen(true);
-      } else if (delay > 0 && delay < 2_147_483_000) {
-        timers.push(
-          setTimeout(() => {
-            firedSet.add(r.id);
-            setActiveCallConfig({
-              reminderId: r.id,
-              reminderTitle: r.title,
-              persona: r.persona,
-              durationMinutes: r.duration_minutes,
-            });
-            setIsOverlayOpen(true);
-          }, delay)
-        );
+      } else if (delay > 0 && delay < 2_147_483_000 && !triggeredReminderIds.has(r.id)) {
+        registerPersistentCall(r.id, delay, {
+          reminderId: r.id,
+          reminderTitle: r.title,
+          persona: r.persona,
+          durationMinutes: r.duration_minutes,
+        });
       }
     }
-
-    return () => timers.forEach(clearTimeout);
   }, [reminders]);
 
   const closeWebCall = useCallback(() => {

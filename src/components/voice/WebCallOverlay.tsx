@@ -23,6 +23,7 @@ import {
   executeRescheduleReminder,
   type CallStatus,
   type WebCallConfig,
+  type VoiceConversationState,
 } from "@/lib/vapi-client";
 import { toast } from "sonner";
 
@@ -40,6 +41,7 @@ export function WebCallOverlay({
   onRescheduled,
 }: WebCallOverlayProps) {
   const [callStatus, setCallStatus] = useState<"incoming" | "active" | "ended">("incoming");
+  const [voiceState, setVoiceState] = useState<VoiceConversationState>("idle");
   const [volumeLevel, setVolumeLevel] = useState(0);
   const [callSeconds, setCallSeconds] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
@@ -62,6 +64,7 @@ export function WebCallOverlay({
   useEffect(() => {
     if (isOpen) {
       setCallStatus("incoming");
+      setVoiceState("idle");
       setCallSeconds(0);
       setTranscripts([]);
       setShowSnoozeMenu(false);
@@ -69,6 +72,7 @@ export function WebCallOverlay({
       startRingtone();
     } else {
       stopRingtone();
+      setVoiceState("idle");
       if (stopCallRef.current) {
         stopCallRef.current();
         stopCallRef.current = null;
@@ -153,12 +157,16 @@ export function WebCallOverlay({
       onStatusChange: (status: CallStatus) => {
         if (status === "ended") {
           setCallStatus("ended");
+          setVoiceState("idle");
           setTimeout(() => onClose(), 1500);
         }
       },
+      onVoiceStateChange: (state) => {
+        setVoiceState(state);
+      },
       onVolumeChange: (vol) => setVolumeLevel(vol),
       onTranscript: (role, text) => {
-        setTranscripts((prev) => [...prev.slice(-4), { role, text }]);
+        setTranscripts((prev) => [...prev.slice(-6), { role, text }]);
       },
       onRescheduled: (newTime, mins) => {
         toast.success(`Reminder rescheduled for ${newTime} (${mins}m delay)`);
@@ -251,13 +259,42 @@ export function WebCallOverlay({
       {/* Main Content Area */}
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 text-center w-full max-w-md">
         {/* Status Indicator */}
-        <p className="text-sm font-semibold tracking-wider uppercase text-purple-300/80 animate-pulse">
-          {callStatus === "incoming"
-            ? "Incoming call..."
-            : callStatus === "active"
-            ? `Connected · ${formattedCallTimer}`
-            : "Call ended"}
-        </p>
+        <div className="flex flex-col items-center gap-1.5">
+          <p className="text-sm font-semibold tracking-wider uppercase text-purple-300/80 animate-pulse">
+            {callStatus === "incoming"
+              ? "Incoming call..."
+              : callStatus === "active"
+              ? `Connected · ${formattedCallTimer}`
+              : "Call ended"}
+          </p>
+          {callStatus === "active" && (
+            <div className="animate-in fade-in zoom-in-95 duration-200">
+              {voiceState === "speaking" && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/20 text-purple-200 border border-purple-400/30 text-[11px] font-semibold">
+                  <Volume2 className="h-3.5 w-3.5 text-purple-300 animate-pulse" />
+                  Sana is speaking...
+                </span>
+              )}
+              {voiceState === "listening" && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[11px] font-semibold animate-pulse">
+                  <Mic className="h-3.5 w-3.5 text-emerald-400 animate-bounce" />
+                  Listening to you... (Speak now)
+                </span>
+              )}
+              {voiceState === "thinking" && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-pink-500/20 text-pink-300 border border-pink-400/30 text-[11px] font-semibold">
+                  <Sparkles className="h-3.5 w-3.5 text-pink-400 animate-spin" />
+                  Sana is thinking...
+                </span>
+              )}
+              {voiceState === "idle" && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/10 text-slate-300 text-[11px] font-medium">
+                  Live AI Voice Call
+                </span>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Caller Name & Subtitle */}
         <h1 className="mt-2 text-3xl font-black tracking-tight text-white flex items-center justify-center gap-2">

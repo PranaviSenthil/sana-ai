@@ -1,6 +1,7 @@
 import Vapi from "@vapi-ai/web";
-import { updateReminderStatus } from "@/lib/reminders.functions";
+import { updateReminderStatus, rescheduleReminder } from "@/lib/reminders.functions";
 import { supabase } from "@/integrations/supabase/client";
+import { generateWebCallTurn } from "@/lib/voice-call.functions";
 
 export interface WebCallConfig {
   reminderId?: string;
@@ -12,6 +13,7 @@ export interface WebCallConfig {
 }
 
 export type CallStatus = "disconnected" | "connecting" | "connected" | "ended";
+export type VoiceConversationState = "idle" | "speaking" | "listening" | "thinking";
 
 export interface VapiCallEvents {
   onStatusChange?: (status: CallStatus) => void;
@@ -19,6 +21,7 @@ export interface VapiCallEvents {
   onTranscript?: (role: "assistant" | "user", text: string) => void;
   onRescheduled?: (newTime: string, minutes: number) => void;
   onError?: (err: Error) => void;
+  onVoiceStateChange?: (state: VoiceConversationState) => void;
 }
 
 // Global Vapi singleton instance
@@ -57,37 +60,55 @@ export async function executeRescheduleReminder(
   config?: WebCallConfig
 ): Promise<string> {
   const newDate = new Date(Date.now() + minutesFromNow * 60_000);
-  const newIso = newDate.toISOString();
+  let formattedTime = newDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  let savedId = reminderId;
 
-  if (reminderId) {
-    try {
-      // Update scheduled_at in reminders table
-      await supabase
-        .from("reminders")
-        .update({
-          scheduled_at: newIso,
-          status: "scheduled",
-          last_fired_at: new Date().toISOString(),
-        })
-        .eq("id", reminderId);
-    } catch (err) {
-      console.error("Error updating reminder via Supabase:", err);
+  try {
+    const result = await rescheduleReminder({
+      data: {
+        id: reminderId || null,
+        minutes_from_now: minutesFromNow,
+        title: config?.reminderTitle,
+        topic: config?.topic,
+        persona: config?.persona,
+      },
+    });
+
+    if (result) {
+      formattedTime = result.formatted_time;
+      savedId = result.id;
     }
-  } else {
-    // Client-side reschedule for test calls
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("reschedule-test-call", {
-          detail: {
-            minutes: minutesFromNow,
-            config,
-          },
-        })
-      );
+  } catch (err) {
+    console.warn("Could not reschedule via server fn, falling back locally:", err);
+    if (reminderId) {
+      try {
+        await supabase
+          .from("reminders")
+          .update({
+            scheduled_at: newDate.toISOString(),
+            status: "scheduled",
+            last_fired_at: new Date().toISOString(),
+          })
+          .eq("id", reminderId);
+      } catch {}
     }
   }
 
-  const formattedTime = newDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  // Broadcast events so UI (Upcoming AI Calls) and persistent timer immediately react
+  if (typeof window !== "undefined") {
+    const detail = {
+      id: savedId,
+      minutes: minutesFromNow,
+      scheduled_at: newDate.toISOString(),
+      config: {
+        ...config,
+        reminderId: savedId,
+      },
+    };
+    window.dispatchEvent(new CustomEvent("reminder-rescheduled", { detail }));
+    window.dispatchEvent(new CustomEvent("reschedule-test-call", { detail }));
+  }
+
   return formattedTime;
 }
 
@@ -224,28 +245,125 @@ function startWebSpeechFallback(
   _systemPrompt: string,
   events: VapiCallEvents
 ): () => void {
-  const topic = config.reminderTitle || "your study session";
+  const topic = config.topic || config.reminderTitle || "your study session";
   let isCleanedUp = false;
+  let isSpeaking = false;
+  const conversationHistory: Array<{ role: "assistant" | "user"; content: string }> = [];
 
-  setTimeout(() => {
-    if (isCleanedUp) return;
-    events.onStatusChange?.("connected");
-
-    // First greeting
-    const initialText = `Hey there! 👋 Time for your ${topic} study session. Are you ready to get started?`;
-    speakText(initialText, events, () => {
-      if (!isCleanedUp) listenUserVoice(config, events);
-    });
-  }, 1000);
-
-  return () => {
+  const cleanup = () => {
     isCleanedUp = true;
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
     if (speechRecognition) {
-      try { speechRecognition.stop(); } catch {}
+      try {
+        speechRecognition.abort();
+      } catch {}
+      speechRecognition = null;
     }
+    events.onVoiceStateChange?.("idle");
+  };
+
+  const speakTurn = (text: string, onDone?: () => void) => {
+    if (isCleanedUp) return;
+    isSpeaking = true;
+    events.onVoiceStateChange?.("speaking");
+
+    speakText(text, events, () => {
+      isSpeaking = false;
+      if (isCleanedUp) return;
+      events.onVoiceStateChange?.("idle");
+      if (onDone) {
+        onDone();
+      } else {
+        startListeningLoop();
+      }
+    });
+  };
+
+  const startListeningLoop = () => {
+    if (isCleanedUp || isSpeaking) return;
+    events.onVoiceStateChange?.("listening");
+
+    listenUserVoiceLoop(config, events, async (transcript) => {
+      if (isCleanedUp) return;
+      conversationHistory.push({ role: "user", content: transcript });
+      events.onVoiceStateChange?.("thinking");
+
+      try {
+        const turnResult = await generateWebCallTurn({
+          data: {
+            reminderTitle: config.reminderTitle,
+            topic: config.topic,
+            userName: config.userName,
+            persona: config.persona,
+            messages: conversationHistory,
+          },
+        });
+
+        if (isCleanedUp) return;
+
+        let rescheduleMins = turnResult.rescheduleMinutes;
+        // Dual-check with regex parser for phrases like "call me after 5 minutes"
+        if (!rescheduleMins) {
+          const parsed = parseSnoozeMinutes(transcript);
+          if (parsed > 0) {
+            rescheduleMins = parsed;
+          }
+        }
+
+        conversationHistory.push({ role: "assistant", content: turnResult.spokenText });
+
+        if (rescheduleMins && rescheduleMins > 0) {
+          const formatted = await executeRescheduleReminder(config.reminderId, rescheduleMins, config);
+          events.onRescheduled?.(formatted, rescheduleMins);
+          speakTurn(turnResult.spokenText, () => {
+            setTimeout(() => {
+              if (!isCleanedUp) {
+                events.onStatusChange?.("ended");
+              }
+            }, 1200);
+          });
+          return;
+        }
+
+        if (turnResult.endCall) {
+          speakTurn(turnResult.spokenText, () => {
+            setTimeout(() => {
+              if (!isCleanedUp) {
+                events.onStatusChange?.("ended");
+              }
+            }, 1200);
+          });
+          return;
+        }
+
+        // Continuous turn-taking: Speak Sana's contextual answer, then listen again!
+        speakTurn(turnResult.spokenText, () => {
+          startListeningLoop();
+        });
+      } catch (err) {
+        console.warn("AI generation error, using smart fallback intent handler:", err);
+        // Fallback to local rule processor to ensure 100% reliability
+        await processUserResponseIntent(transcript, config, events);
+      }
+    });
+  };
+
+  // Kick off first turn: warm greeting
+  setTimeout(() => {
+    if (isCleanedUp) return;
+    events.onStatusChange?.("connected");
+
+    const initialText = `Hey there! Time for your ${topic} study session. Are you ready?`;
+    conversationHistory.push({ role: "assistant", content: initialText });
+    speakTurn(initialText, () => {
+      startListeningLoop();
+    });
+  }, 600);
+
+  return () => {
+    cleanup();
     events.onStatusChange?.("ended");
   };
 }
@@ -261,13 +379,11 @@ function speakText(text: string, events: VapiCallEvents, onEnded?: () => void) {
   if (voices.length === 0) {
     // Chrome loads voices asynchronously. Wait for them.
     const handleVoicesChanged = () => {
-      // Clean up event handler
       window.speechSynthesis.onvoiceschanged = null;
       speakTextActual(text, events, onEnded);
     };
     window.speechSynthesis.onvoiceschanged = handleVoicesChanged;
 
-    // Safety fallback: if event doesn't fire in 250ms, speak anyway
     setTimeout(() => {
       if (window.speechSynthesis.onvoiceschanged === handleVoicesChanged) {
         window.speechSynthesis.onvoiceschanged = null;
@@ -288,7 +404,13 @@ function speakTextActual(text: string, events: VapiCallEvents, onEnded?: () => v
   }
 
   window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
+  // Strip markdown, asterisks and emojis so TTS pronounces pure natural speech
+  const cleanSpeechText = text
+    .replace(/[*_~`#]/g, "")
+    .replace(/[\u{1F300}-\u{1F9FF}]/gu, "")
+    .trim();
+
+  const utterance = new SpeechSynthesisUtterance(cleanSpeechText);
   utterance.rate = 1.0;
   utterance.pitch = 1.1; // Gentle, friendly female tone pitch
 
@@ -300,7 +422,7 @@ function speakTextActual(text: string, events: VapiCallEvents, onEnded?: () => v
     "Samantha",
     "Victoria",
     "Hazel",
-    "Zira"
+    "Zira",
   ];
 
   let femaleVoice = voices.find((v) => {
@@ -309,7 +431,6 @@ function speakTextActual(text: string, events: VapiCallEvents, onEnded?: () => v
     return prioritizedFemaleVoiceNames.some((prefName) => nameLower.includes(prefName.toLowerCase()));
   });
 
-  // Fallback to any English voice containing female keywords
   if (!femaleVoice) {
     femaleVoice = voices.find((v) => {
       if (!v.lang.startsWith("en")) return false;
@@ -327,7 +448,6 @@ function speakTextActual(text: string, events: VapiCallEvents, onEnded?: () => v
     });
   }
 
-  // Final fallback to any English voice
   if (!femaleVoice) {
     femaleVoice = voices.find((v) => v.lang.startsWith("en"));
   }
@@ -337,7 +457,6 @@ function speakTextActual(text: string, events: VapiCallEvents, onEnded?: () => v
   activeUtterance = utterance;
   events.onTranscript?.("assistant", text);
 
-  // Volume pulse animation simulation
   const interval = setInterval(() => {
     if (window.speechSynthesis.speaking) {
       events.onVolumeChange?.(0.4 + Math.random() * 0.5);
@@ -362,37 +481,66 @@ function speakTextActual(text: string, events: VapiCallEvents, onEnded?: () => v
   window.speechSynthesis.speak(utterance);
 }
 
-function listenUserVoice(config: WebCallConfig, events: VapiCallEvents) {
+function listenUserVoiceLoop(
+  _config: WebCallConfig,
+  events: VapiCallEvents,
+  onSpeechResult: (text: string) => void
+) {
   if (typeof window === "undefined") return;
 
   const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
   if (!SpeechRecognition) {
-    // If browser doesn't support webkitSpeechRecognition, handle via UI text replies
     return;
   }
 
   try {
-    speechRecognition = new SpeechRecognition();
-    speechRecognition.continuous = false;
-    speechRecognition.interimResults = false;
-    speechRecognition.lang = "en-US";
+    if (speechRecognition) {
+      try {
+        speechRecognition.abort();
+      } catch {}
+      speechRecognition = null;
+    }
 
-    speechRecognition.onresult = async (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      events.onTranscript?.("user", transcript);
+    const recognition = new SpeechRecognition();
+    speechRecognition = recognition;
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
 
-      // Process intent
-      await processUserResponseIntent(transcript, config, events);
+    let captured = false;
+
+    recognition.onresult = (event: any) => {
+      captured = true;
+      const transcript = event.results[0]?.[0]?.transcript;
+      if (transcript && transcript.trim()) {
+        events.onTranscript?.("user", transcript.trim());
+        onSpeechResult(transcript.trim());
+      }
     };
 
-    speechRecognition.onerror = (_e: any) => {
-      // Ignore audio mic errors gracefully
+    recognition.onerror = (err: any) => {
+      // If error is no-speech and nothing was captured, safely try listening again
+      if (err.error === "no-speech" && !captured && speechRecognition === recognition) {
+        setTimeout(() => {
+          if (speechRecognition === recognition) {
+            try {
+              recognition.start();
+            } catch {}
+          }
+        }, 500);
+      }
     };
 
-    speechRecognition.start();
+    recognition.start();
   } catch (err) {
     console.warn("Speech recognition start failed:", err);
   }
+}
+
+function listenUserVoice(config: WebCallConfig, events: VapiCallEvents) {
+  listenUserVoiceLoop(config, events, async (transcript) => {
+    await processUserResponseIntent(transcript, config, events);
+  });
 }
 
 /**

@@ -69,3 +69,121 @@ export const updateReminderStatus = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+const RescheduleReminderSchema = z.object({
+  id: z.string().optional().nullable(),
+  minutes_from_now: z.number().int().positive(),
+  title: z.string().optional(),
+  topic: z.string().optional(),
+  persona: z.string().optional(),
+});
+
+export const rescheduleReminder = createServerFn({ method: "POST" })
+  .validator((d: unknown) => RescheduleReminderSchema.parse(d))
+  .handler(async ({ data }) => {
+    const newDate = new Date(Date.now() + data.minutes_from_now * 60_000);
+    const newIso = newDate.toISOString();
+    const formattedTime = newDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    // Determine user ID dynamically
+    let userId: string | null = null;
+    try {
+      const { getRequest } = await import("@tanstack/react-start/server");
+      const request = getRequest();
+      const authHeader = request?.headers?.get("authorization");
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.replace("Bearer ", "");
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { data: claimsData } = await supabaseAdmin.auth.getClaims(token);
+        if (claimsData?.claims?.sub) {
+          userId = claimsData.claims.sub;
+        }
+      }
+    } catch {}
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    if (!userId) {
+      const { data: latestProfile } = await supabaseAdmin
+        .from("profiles")
+        .select("user_id")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      userId = latestProfile?.user_id || null;
+    }
+
+    if (!userId) {
+      const { data: latestReminder } = await supabaseAdmin
+        .from("reminders")
+        .select("user_id")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      userId = latestReminder?.user_id || null;
+    }
+
+    if (data.id) {
+      // Update existing reminder
+      const { data: updated, error } = await supabaseAdmin
+        .from("reminders")
+        .update({
+          scheduled_at: newIso,
+          status: "scheduled",
+          last_fired_at: new Date().toISOString(),
+        })
+        .eq("id", data.id)
+        .select()
+        .maybeSingle();
+
+      if (!error && updated) {
+        return {
+          id: updated.id,
+          title: updated.title,
+          scheduled_at: newIso,
+          formatted_time: formattedTime,
+        };
+      }
+    }
+
+    // If no existing ID or ID was not found, insert a new scheduled reminder into Supabase
+    if (userId) {
+      const title = data.title || "Study session with Sana";
+      const { data: created, error: createError } = await supabaseAdmin
+        .from("reminders")
+        .insert({
+          user_id: userId,
+          title,
+          type: "study",
+          scheduled_at: newIso,
+          duration_minutes: 25,
+          persona: data.persona || "friendly_coach",
+          repeat_mode: "once",
+          alert_before_minutes: 0,
+          strict_mode: false,
+          dont_miss: true,
+          ai_call: true,
+          status: "scheduled",
+        })
+        .select()
+        .single();
+
+      if (!createError && created) {
+        return {
+          id: created.id,
+          title: created.title,
+          scheduled_at: newIso,
+          formatted_time: formattedTime,
+        };
+      }
+    }
+
+    return {
+      id: data.id || "local-" + Date.now(),
+      title: data.title || "Study session with Sana",
+      scheduled_at: newIso,
+      formatted_time: formattedTime,
+    };
+  });

@@ -1,4 +1,4 @@
-import { defineConfig as lovableConfig } from "@lovable.dev/vite-tanstack-config";
+import { defineConfig as lovableConfig } from "@lovable.dev/vite-tanstack-config/dist/index.js";
 import { defineConfig } from "vite";
 
 export default defineConfig(async (env) => {
