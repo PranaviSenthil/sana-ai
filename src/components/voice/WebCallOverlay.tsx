@@ -13,6 +13,8 @@ import {
   Send,
   Bell,
   CheckCircle2,
+  Globe,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import sanaAvatar from "@/assets/sana-avatar.png";
@@ -21,6 +23,7 @@ import {
   startWebCall,
   processUserResponseIntent,
   executeRescheduleReminder,
+  setAudioSpeakerMuted,
   type CallStatus,
   type WebCallConfig,
   type VoiceConversationState,
@@ -34,6 +37,14 @@ export interface WebCallOverlayProps {
   onRescheduled?: (newTime: string, mins: number) => void;
 }
 
+const SUPPORTED_LANGUAGES = [
+  { code: "en", label: "English", flag: "🇬🇧" },
+  { code: "ta", label: "தமிழ்", flag: "🇮🇳" },
+  { code: "hi", label: "हिन्दी", flag: "🇮🇳" },
+  { code: "es", label: "Español", flag: "🇪🇸" },
+  { code: "auto", label: "Auto", flag: "🌐" },
+];
+
 export function WebCallOverlay({
   isOpen,
   config,
@@ -46,6 +57,8 @@ export function WebCallOverlay({
   const [callSeconds, setCallSeconds] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+  const [selectedLanguage, setSelectedLanguage] = useState<string>(config?.language || "en");
+  const [showLangMenu, setShowLangMenu] = useState(false);
   const [showSnoozeMenu, setShowSnoozeMenu] = useState(false);
   const [showMessageBox, setShowMessageBox] = useState(false);
   const [customMessage, setCustomMessage] = useState("");
@@ -69,6 +82,8 @@ export function WebCallOverlay({
       setTranscripts([]);
       setShowSnoozeMenu(false);
       setShowMessageBox(false);
+      setShowLangMenu(false);
+      setSelectedLanguage(config?.language || "en");
       startRingtone();
     } else {
       stopRingtone();
@@ -148,12 +163,23 @@ export function WebCallOverlay({
     }
   };
 
+  const handleToggleSpeaker = () => {
+    const next = !isSpeakerOn;
+    setIsSpeakerOn(next);
+    setAudioSpeakerMuted(!next);
+  };
+
   // Accept Call Handler
   const handleAccept = async () => {
     stopRingtone();
     setCallStatus("active");
 
-    const stopFn = await startWebCall(config || { reminderTitle: title }, {
+    const activeConfig: WebCallConfig = {
+      ...(config || { reminderTitle: title }),
+      language: selectedLanguage,
+    };
+
+    const stopFn = await startWebCall(activeConfig, {
       onStatusChange: (status: CallStatus) => {
         if (status === "ended") {
           setCallStatus("ended");
@@ -195,7 +221,11 @@ export function WebCallOverlay({
   const handleSnooze = async (minutes: number) => {
     stopRingtone();
     try {
-      const formatted = await executeRescheduleReminder(config?.reminderId, minutes, config || undefined);
+      const activeConfig: WebCallConfig = {
+        ...(config || { reminderTitle: title }),
+        language: selectedLanguage,
+      };
+      const formatted = await executeRescheduleReminder(config?.reminderId, minutes, activeConfig);
       toast.success(`Call snoozed. Sana will call you back at ${formatted}`);
       onRescheduled?.(formatted, minutes);
     } catch (err) {
@@ -213,8 +243,13 @@ export function WebCallOverlay({
     setCustomMessage("");
     setShowMessageBox(false);
 
+    const activeConfig: WebCallConfig = {
+      ...(config || { reminderTitle: title }),
+      language: selectedLanguage,
+    };
+
     // Process user text message as intent
-    processUserResponseIntent(msg, config || { reminderTitle: title }, {
+    processUserResponseIntent(msg, activeConfig, {
       onTranscript: (role, text) => {
         setTranscripts((prev) => [...prev, { role, text }]);
       },
@@ -234,6 +269,8 @@ export function WebCallOverlay({
     .toString()
     .padStart(2, "0")}:${(callSeconds % 60).toString().padStart(2, "0")}`;
 
+  const currentLangObj = SUPPORTED_LANGUAGES.find((l) => l.code === selectedLanguage) || SUPPORTED_LANGUAGES[0];
+
   return (
     <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-between overflow-hidden bg-[#090714] text-white select-none animate-in fade-in duration-300">
       {/* Background radial atmosphere & glows */}
@@ -245,14 +282,53 @@ export function WebCallOverlay({
         }}
       />
 
-      {/* Top Mobile Status Header */}
-      <div className="relative z-10 flex w-full max-w-md items-center justify-between px-6 pt-5">
+      {/* Top Mobile Status Header with Multilingual Language Selector */}
+      <div className="relative z-20 flex w-full max-w-md items-center justify-between px-6 pt-5">
         <span className="text-xs font-bold tracking-widest text-slate-300">
           {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </span>
+
+        {/* Multilingual Selector Pill */}
+        <div className="relative">
+          <button
+            onClick={() => setShowLangMenu(!showLangMenu)}
+            className="flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-slate-200 backdrop-blur-md border border-white/15 hover:bg-white/20 transition active:scale-95"
+            title="Change voice language"
+          >
+            <Globe className="h-3 w-3 text-purple-400" />
+            <span>{currentLangObj.flag} {currentLangObj.label}</span>
+            <ChevronDown className="h-2.5 w-2.5 text-slate-400" />
+          </button>
+
+          {showLangMenu && (
+            <div className="absolute top-8 left-1/2 -translate-x-1/2 z-50 w-36 rounded-xl border border-white/15 bg-slate-900/95 py-1 backdrop-blur-2xl shadow-2xl animate-in fade-in zoom-in-95">
+              {SUPPORTED_LANGUAGES.map((lang) => (
+                <button
+                  key={lang.code}
+                  onClick={() => {
+                    setSelectedLanguage(lang.code);
+                    setShowLangMenu(false);
+                    toast.success(`Language set to ${lang.label}`);
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between px-3 py-1.5 text-xs text-left transition hover:bg-purple-600/30",
+                    selectedLanguage === lang.code ? "font-bold text-purple-300" : "text-slate-300"
+                  )}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span>{lang.flag}</span>
+                    <span>{lang.label}</span>
+                  </span>
+                  {selectedLanguage === lang.code && <CheckCircle2 className="h-3 w-3 text-purple-400" />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold text-slate-200 backdrop-blur-md">
           <Sparkles className="h-3 w-3 text-purple-400 animate-pulse" />
-          <span>Sana AI Web Call</span>
+          <span>Sana AI</span>
         </div>
       </div>
 
@@ -363,10 +439,16 @@ export function WebCallOverlay({
               </div>
               <div>
                 <div className="text-xs font-bold text-purple-200">
-                  Hey there! 👋
+                  {selectedLanguage === "ta" ? "வணக்கம்! 👋" : selectedLanguage === "hi" ? "नमस्ते! 👋" : "Hey there! 👋"}
                 </div>
                 <div className="mt-0.5 text-xs text-slate-300 leading-snug">
-                  Time to continue your <span className="font-semibold text-white">{title}</span> session. Ready?
+                  {selectedLanguage === "ta" ? (
+                    <>உங்கள் <span className="font-semibold text-white">{title}</span> படிப்பு நேரம் வந்துவிட்டது. தயாரா?</>
+                  ) : selectedLanguage === "hi" ? (
+                    <>आपकी <span className="font-semibold text-white">{title}</span> पढ़ाई का समय हो गया है। क्या आप तैयार हैं?</>
+                  ) : (
+                    <>Time to continue your <span className="font-semibold text-white">{title}</span> session. Ready?</>
+                  )}
                 </div>
               </div>
             </div>
@@ -481,7 +563,7 @@ export function WebCallOverlay({
             </button>
 
             <button
-              onClick={() => setIsSpeakerOn(!isSpeakerOn)}
+              onClick={handleToggleSpeaker}
               className={cn(
                 "grid h-14 w-14 place-items-center rounded-full backdrop-blur-md transition-all active:scale-90",
                 !isSpeakerOn ? "bg-slate-700 text-slate-400" : "bg-white/10 text-white hover:bg-white/20"
